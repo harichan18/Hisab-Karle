@@ -1,4 +1,4 @@
-/// Centralized amount parsing and formatting utility for Hisab Kitab.
+/// Centralized amount parsing and formatting utility for Hisab Karle.
 /// Supports Indian number systems (lakhs, crores), comma separation,
 /// and integer paise conversion.
 class AmountParser {

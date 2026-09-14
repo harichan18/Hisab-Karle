@@ -1,4 +1,4 @@
-// Lightweight secret-safety scanner for Hisab Kitab.
+// Lightweight secret-safety scanner for Hisab Karle.
 // Run manually: dart run tool/check_secrets.dart
 // Or integrate with git pre-commit hook.
 
@@ -7,7 +7,7 @@ import 'dart:io';
 void main(List<String> args) {
   final checkAll = args.contains('--all');
   stdout.writeln(
-    '🔒 Running Hisab Kitab secret scanner (${checkAll ? "all files" : "staged files"})...',
+    '🔒 Running Hisab Karle secret scanner (${checkAll ? "all files" : "staged files"})...',
   );
 
   final filesToCheck = checkAll ? _getAllFiles() : _getStagedFiles();

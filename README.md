@@ -1,4 +1,4 @@
-# Hisab Kitab
+# Hisab Karle
 
 A personal money and transaction management application combining bilateral person-to-person give/take tracking with daily personal expenditure management.
 
@@ -13,11 +13,11 @@ People typically manage three distinct financial workflows in everyday life:
 
 Conventional expense trackers force all three workflows into generic expense categories. This distorts personal consumption figures and makes reconciling debts with friends confusing.
 
-**Hisab Kitab** bridges this gap by unifying a dedicated **Person-to-Person Ledger** and a **Personal Expenditure Ledger** into a single, offline-first mobile application.
+**Hisab Karle** bridges this gap by unifying a dedicated **Person-to-Person Ledger** and a **Personal Expenditure Ledger** into a single, offline-first mobile application.
 
 ---
 
-## Why Hisab Kitab?
+## Why Hisab Karle?
 
 - **Dual-Ledger Separation:** Keeps individual consumption separate from bilateral peer debts so neither figure is misrepresented.
 - **Directional Balances:** Automatically computes net outstanding balances (`totalGiven - totalTaken`) per contact.
@@ -57,7 +57,7 @@ Conventional expense trackers force all three workflows into generic expense cat
   - User A's record: Given ₹500 to User B (`iGave: true`).
   - User B's mirrored record: Received ₹500 from User A (`iGave: false`).
 - Both records share the same deterministic identifier.
-- *Note:* Hisab Kitab is a transaction recording and ledger application. It records and tracks bilateral debts; it does not process or execute banking transfers.
+- *Note:* Hisab Karle is a transaction recording and ledger application. It records and tracks bilateral debts; it does not process or execute banking transfers.
 
 ### Offline-First Synchronization
 - **Immediate Local Persistence:** New records and edits write directly to SQLite, providing instant UI feedback without waiting for network responses.
@@ -83,7 +83,7 @@ Conventional expense trackers force all three workflows into generic expense cat
 
 ### UPI Integration
 - **Deep-Link Payment Initiation:** Generates and launches standard `upi://pay` deep links to open installed UPI payment applications (e.g., Google Pay, PhonePe, Paytm, BHIM) with pre-filled payee details and amounts.
-- *Note:* Hisab Kitab initiates native platform deep-links to external UPI apps; it does not act as an internal UPI payment processor.
+- *Note:* Hisab Karle initiates native platform deep-links to external UPI apps; it does not act as an internal UPI payment processor.
 
 ### WhatsApp Integration
 - **Statement & Receipt Sharing:** Formats structured, human-readable debt summaries and statements for one-tap sharing through WhatsApp and native Android share sheets.
@@ -180,7 +180,7 @@ sequenceDiagram
 
 ## Local Database Schema (v9)
 
-Hisab Kitab uses **SQLite** (schema version 9) for local data persistence.
+Hisab Karle uses **SQLite** (schema version 9) for local data persistence.
 
 ```
 +---------------------------------------------------------------------------------+
@@ -281,7 +281,7 @@ Hisab Kitab uses **SQLite** (schema version 9) for local data persistence.
 
 ## Testing & Quality Engineering
 
-Hisab Kitab maintains an automated test suite executed via `flutter test` and `sqflite_common_ffi`:
+Hisab Karle maintains an automated test suite executed via `flutter test` and `sqflite_common_ffi`:
 
 ```
 ============================================================

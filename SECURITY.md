@@ -1,4 +1,4 @@
-# Security Policy & Audit Guide — Hisab Kitab
+# Security Policy & Audit Guide — Hisab Karle
 
 ## 1. Firebase API Key & GitHub Secret Scanning
 
@@ -32,7 +32,7 @@ To ensure this client key cannot be abused for non-Firebase Google Cloud APIs, c
      - **SHA-1 fingerprint:** `92:CF:E8:E2:77:90:E9:BB:EE:FA:FF:5B:44:E0:E7:5A:28:61:5E:1A` (debug/release signing SHA-1)
 5. Under **API restrictions**:
    - Select **Restrict key**.
-   - Enable only the APIs Hisab Kitab needs:
+   - Enable only the APIs Hisab Karle needs:
      - `Cloud Firestore API`
      - `Firebase Authentication API` / `Identity Toolkit API`
      - `Firebase Installations API`
@@ -60,7 +60,7 @@ firebase deploy --only firestore:rules
 
 ## 4. Cloudinary Configuration
 
-Hisab Kitab uses **unsigned client uploads** for receipts and profile images:
+Hisab Karle uses **unsigned client uploads** for receipts and profile images:
 - **Cloud Name:** Public identifier used in upload URL.
 - **Upload Preset (`receipt_upload`):** Unsigned preset configured in the Cloudinary Console.
 - **API Secret:** Cloudinary API secrets are **never** included in client-side Flutter code.

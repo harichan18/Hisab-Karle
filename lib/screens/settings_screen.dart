@@ -217,7 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   iconColor: isDark
                       ? const Color(0xFF94A3B8)
                       : AppColors.textSecondary,
-                  title: 'About Hisab Kitab',
+                  title: 'About Hisab Karle',
                   subtitle: 'Version 1.0.0 • Terms & Credits',
                   isDark: isDark,
                   onTap: () {

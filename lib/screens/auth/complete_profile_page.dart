@@ -125,7 +125,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    "To use Hisab Kitab, please complete your profile by providing your UPI ID and Mobile Number. This information is required for settlements and payment reminders.",
+                    "To use Hisab Karle, please complete your profile by providing your UPI ID and Mobile Number. This information is required for settlements and payment reminders.",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey),
                   ),

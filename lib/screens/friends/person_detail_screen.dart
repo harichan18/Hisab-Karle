@@ -1447,7 +1447,7 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                                           .toStringAsFixed(0);
                                       final message =
                                           'Hi $_displayName,\n\n'
-                                          'According to Hisab Kitab, you currently owe ₹$amountText.\n\n'
+                                          'According to Hisab Karle, you currently owe ₹$amountText.\n\n'
                                           'You can settle it whenever convenient.\n\n'
                                           'Thanks 🙂';
 

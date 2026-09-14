@@ -1494,7 +1494,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "Add friends in Hisab Kitab first to split payments with them.",
+                    "Add friends in Hisab Karle first to split payments with them.",
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12, color: textSecondary),
                   ),

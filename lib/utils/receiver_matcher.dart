@@ -1,4 +1,4 @@
-/// Centralized receiver and friend matching utility for Hisab Kitab.
+/// Centralized receiver and friend matching utility for Hisab Karle.
 /// Matches detected receiver name and UPI against existing genuine friends
 /// with confidence scoring (exact, first+last, partial/single-token, UPI).
 /// NEVER creates fake friends or mutates friend data.

@@ -83,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      "Hisab Kitab",
+                      "Hisab Karle",
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,

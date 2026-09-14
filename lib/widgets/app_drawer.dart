@@ -62,7 +62,7 @@ class AppDrawer extends StatelessWidget {
                         final name =
                             data?['name'] as String? ??
                             currentUser.displayName ??
-                            'Hisab Kitab User';
+                            'Hisab Karle User';
                         final email =
                             data?['email'] as String? ??
                             currentUser.email ??

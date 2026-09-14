@@ -21,7 +21,7 @@ class AboutScreen extends StatelessWidget {
       backgroundColor: isDark ? AppColors.backgroundDark : AppColors.background,
       appBar: AppBar(
         title: Text(
-          'About Hisab Kitab',
+          'About Hisab Karle',
           style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 18,
@@ -67,7 +67,7 @@ class AboutScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                'Hisab Kitab',
+                'Hisab Karle',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -85,7 +85,7 @@ class AboutScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               Text(
-                'Hisab Kitab is your ultimate companion for managing both shared debts with friends and your personal daily spending in one integrated, easy-to-use application.',
+                'Hisab Karle is your ultimate companion for managing both shared debts with friends and your personal daily spending in one integrated, easy-to-use application.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: subtextColor,
@@ -95,7 +95,7 @@ class AboutScreen extends StatelessWidget {
               ),
               const SizedBox(height: 40),
               Text(
-                '© 2026 Hisab Kitab Team',
+                '© 2026 Hisab Karle Team',
                 style: TextStyle(
                   color: isDark ? AppColors.textMutedDark : AppColors.textMuted,
                   fontSize: 12,

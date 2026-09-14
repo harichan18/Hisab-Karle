@@ -598,7 +598,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             SharePlus.instance.share(
                               ShareParams(
                                 text:
-                                    "My Hisab Kitab Friend Code is: $friendCode",
+                                    "My Hisab Karle Friend Code is: $friendCode",
                               ),
                             );
                           },

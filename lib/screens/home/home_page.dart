@@ -380,7 +380,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       print('APK download started');
       final tempDir = await getTemporaryDirectory();
-      apkPath = '${tempDir.path}/hisab_kitab_update.apk';
+      apkPath = '${tempDir.path}/hisab_karle_update.apk';
       print('APK saved at: $apkPath');
 
       final apkFile = File(apkPath);
@@ -438,7 +438,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               return AlertDialog(
                 title: const Text('Permission Required'),
                 content: const Text(
-                  "Please allow 'Install unknown apps' for Hisab Kitab to continue the update.",
+                  "Please allow 'Install unknown apps' for Hisab Karle to continue the update.",
                 ),
                 actions: [
                   TextButton(
