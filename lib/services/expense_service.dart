@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/expense_model.dart';
+import '../models/transaction_model.dart';
 import '../database/database_helper.dart';
 
 class ExpenseService {
@@ -19,6 +20,7 @@ class ExpenseService {
       userId: expense.userId.isNotEmpty
           ? expense.userId
           : (uid ?? 'offline_user'),
+      syncStatus: uid != null ? SyncStatus.pending : SyncStatus.synced,
     );
 
     // Save locally
@@ -26,9 +28,19 @@ class ExpenseService {
 
     // Save to Firestore if online
     if (uid != null) {
-      await _firestoreRef
-          .doc(updatedExpense.id)
-          .set(updatedExpense.toFirestoreMap());
+      try {
+        await _firestoreRef
+            .doc(updatedExpense.id)
+            .set(updatedExpense.toFirestoreMap());
+        await DatabaseHelper.instance.updateExpenseSyncStatus(
+          updatedExpense.id!,
+          SyncStatus.synced,
+        );
+      } catch (e) {
+        debugPrint(
+          '[ExpenseService] Firestore save failed: $e; kept in local pending queue',
+        );
+      }
     }
   }
 
@@ -45,7 +57,9 @@ class ExpenseService {
             .toList();
         // Update local cache
         for (final exp in list) {
-          await DatabaseHelper.instance.insertExpense(exp);
+          await DatabaseHelper.instance.insertExpense(
+            exp.copyWith(syncStatus: SyncStatus.synced),
+          );
         }
         list.sort((a, b) => b.expenseDate.compareTo(a.expenseDate));
         return list;
@@ -72,7 +86,9 @@ class ExpenseService {
             .toList();
         // Cache in background
         for (final exp in list) {
-          DatabaseHelper.instance.insertExpense(exp);
+          DatabaseHelper.instance.insertExpense(
+            exp.copyWith(syncStatus: SyncStatus.synced),
+          );
         }
         list.sort((a, b) => b.expenseDate.compareTo(a.expenseDate));
         return list;
@@ -86,13 +102,28 @@ class ExpenseService {
   // Update
   static Future<void> updateExpense(ExpenseModel expense) async {
     final uid = _currentUserId;
+    final updatedExpense = expense.copyWith(
+      syncStatus: uid != null ? SyncStatus.pending : SyncStatus.synced,
+    );
 
     // Update locally
-    await DatabaseHelper.instance.updateExpense(expense);
+    await DatabaseHelper.instance.updateExpense(updatedExpense);
 
     // Update in Firestore if online and expense has Firestore ID
-    if (uid != null && expense.id != null) {
-      await _firestoreRef.doc(expense.id).update(expense.toFirestoreMap());
+    if (uid != null && updatedExpense.id != null) {
+      try {
+        await _firestoreRef
+            .doc(updatedExpense.id)
+            .update(updatedExpense.toFirestoreMap());
+        await DatabaseHelper.instance.updateExpenseSyncStatus(
+          updatedExpense.id!,
+          SyncStatus.synced,
+        );
+      } catch (e) {
+        debugPrint(
+          '[ExpenseService] Firestore update failed: $e; kept in local pending queue',
+        );
+      }
     }
   }
 

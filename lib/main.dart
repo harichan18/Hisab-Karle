@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'core/storage/app_prefs.dart';
 import 'firebase_options.dart';
 import 'screens/auth/auth_gate.dart';
+import 'services/sync_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_helper.dart';
 
@@ -12,6 +13,7 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // Init SharedPreferences cache before runApp so data is available synchronously
   await AppPrefs.init();
+  SyncService.instance.startListening();
   runApp(const MyApp());
 }
 

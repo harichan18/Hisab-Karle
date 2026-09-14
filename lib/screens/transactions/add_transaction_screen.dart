@@ -36,6 +36,7 @@ class _AddPageState extends State<AddPage> {
   String? existingReceiptPath;
   String? existingReceiptUrl;
   bool isReceiptRemoved = false;
+  bool _isSaving = false;
 
   String formatDate(DateTime date) {
     return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
@@ -76,6 +77,8 @@ class _AddPageState extends State<AddPage> {
 
   Future<void> saveTransaction() async {
     const scope = 'AddPage.saveTransaction';
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
     receiptLog(
       scope,
       'Save pressed. receiptSelected=${receiptImage != null} isReceiptRemoved=$isReceiptRemoved',
@@ -202,22 +205,66 @@ class _AddPageState extends State<AddPage> {
 
       if (widget.transaction == null) {
         receiptLog(scope, 'Writing new transaction to local DB.');
-        await DatabaseHelper.instance.insertTransaction(transaction);
-        receiptLog(scope, 'Writing new transaction to Firestore.');
-        await FirebaseDataService.saveTransaction(
-          transaction,
+        firebaseId ??= FirebaseFirestore.instance.collection('users').doc().id;
+        final localTx = transaction.copyWith(
           firebaseId: firebaseId,
+          createdBy: currentUser?.uid,
+          syncStatus: currentUser != null
+              ? SyncStatus.pending
+              : SyncStatus.synced,
         );
+        final localId = await DatabaseHelper.instance.insertTransaction(
+          localTx,
+        );
+
+        if (currentUser != null) {
+          receiptLog(scope, 'Writing new transaction to Firestore.');
+          try {
+            await FirebaseDataService.saveTransaction(
+              localTx.copyWith(id: localId),
+              firebaseId: firebaseId,
+            );
+            await DatabaseHelper.instance.updateTransactionSyncStatus(
+              localId,
+              SyncStatus.synced,
+              firebaseId: firebaseId,
+            );
+          } catch (cloudErr) {
+            receiptLog(
+              scope,
+              'Cloud save queued/failed: $cloudErr; safely stored in local SQLite.',
+            );
+          }
+        }
       } else {
         if (transaction.id != null) {
           receiptLog(scope, 'Updating transaction in local DB.');
-          await DatabaseHelper.instance.updateTransaction(transaction);
+          final updatedTx = transaction.copyWith(
+            syncStatus: currentUser != null
+                ? SyncStatus.pending
+                : SyncStatus.synced,
+          );
+          await DatabaseHelper.instance.updateTransaction(updatedTx);
+
+          if (currentUser != null) {
+            receiptLog(scope, 'Writing updated transaction to Firestore.');
+            try {
+              await FirebaseDataService.saveTransaction(
+                updatedTx,
+                firebaseId: transaction.firebaseId,
+              );
+              await DatabaseHelper.instance.updateTransactionSyncStatus(
+                transaction.id!,
+                SyncStatus.synced,
+              );
+            } catch (cloudErr) {
+              receiptLog(
+                scope,
+                'Cloud update queued/failed: $cloudErr; safely stored in local SQLite.',
+              );
+            }
+          }
         }
-        receiptLog(scope, 'Writing updated transaction to Firestore.');
-        await FirebaseDataService.saveTransaction(
-          transaction,
-          firebaseId: transaction.firebaseId,
-        );
       }
 
       receiptLog(scope, 'Save finished successfully.');
@@ -232,6 +279,10 @@ class _AddPageState extends State<AddPage> {
             content: Text('Failed to save transaction. Please try again.'),
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
       }
     }
   }
@@ -529,7 +580,7 @@ class _AddPageState extends State<AddPage> {
               width: double.infinity,
               height: 54,
               child: ElevatedButton(
-                onPressed: saveTransaction,
+                onPressed: _isSaving ? null : saveTransaction,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isDark ? Colors.white : AppColors.darkCard,
                   foregroundColor: isDark ? AppColors.darkCard : Colors.white,
@@ -538,16 +589,25 @@ class _AddPageState extends State<AddPage> {
                   ),
                   elevation: 0,
                 ),
-                child: Text(
-                  widget.transaction == null
-                      ? "Save Transaction"
-                      : "Update Transaction",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? AppColors.darkCard : Colors.white,
-                  ),
-                ),
+                child: _isSaving
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: isDark ? AppColors.darkCard : Colors.white,
+                        ),
+                      )
+                    : Text(
+                        widget.transaction == null
+                            ? "Save Transaction"
+                            : "Update Transaction",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? AppColors.darkCard : Colors.white,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 20),

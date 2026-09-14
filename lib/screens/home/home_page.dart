@@ -639,7 +639,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> loadTransactions() async {
-    final data = await DatabaseHelper.instance.getTransactions();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final data = await DatabaseHelper.instance.getTransactions(userId: uid);
     if (!mounted) {
       return;
     }
@@ -1677,12 +1678,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             );
 
             _receiptLog(scope, 'Writing new transaction to local DB.');
-            await DatabaseHelper.instance.insertTransaction(transaction);
-            _receiptLog(scope, 'Writing new transaction to Firestore.');
-            await FirebaseDataService.saveTransaction(
-              transaction,
+            firebaseId ??= FirebaseFirestore.instance
+                .collection('users')
+                .doc()
+                .id;
+            final localTx = transaction.copyWith(
               firebaseId: firebaseId,
+              createdBy: currentUser?.uid,
+              syncStatus: currentUser != null
+                  ? SyncStatus.pending
+                  : SyncStatus.synced,
             );
+            final localId = await DatabaseHelper.instance.insertTransaction(
+              localTx,
+            );
+
+            if (currentUser != null) {
+              _receiptLog(scope, 'Writing new transaction to Firestore.');
+              try {
+                await FirebaseDataService.saveTransaction(
+                  localTx.copyWith(id: localId),
+                  firebaseId: firebaseId,
+                );
+                await DatabaseHelper.instance.updateTransactionSyncStatus(
+                  localId,
+                  SyncStatus.synced,
+                  firebaseId: firebaseId,
+                );
+              } catch (cloudErr) {
+                _receiptLog(
+                  scope,
+                  'Cloud save queued/failed: $cloudErr; safely stored in local SQLite.',
+                );
+              }
+            }
 
             _receiptLog(scope, 'Save finished successfully.');
             if (dialogContext.mounted) {

@@ -741,6 +741,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);

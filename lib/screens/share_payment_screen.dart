@@ -548,6 +548,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
   }
 
   Future<void> _confirmAndSaveTransactions() async {
+    if (_isSaving) return;
     final error = _validateInputs();
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -611,12 +612,35 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
           iGave: true, // User paid -> friends owe user ("You Gave")
         );
 
-        // Save locally in SQLite
-        await DatabaseHelper.instance.insertTransaction(tx);
+        // Save locally in SQLite first
+        final localTx = tx.copyWith(
+          firebaseId: firebaseId,
+          createdBy: currentUid,
+          syncStatus: currentUid != null
+              ? SyncStatus.pending
+              : SyncStatus.synced,
+        );
+        final localId = await DatabaseHelper.instance.insertTransaction(
+          localTx,
+        );
 
         // Save mirrored in Firestore if authenticated
         if (currentUid != null) {
-          await FirebaseDataService.saveTransaction(tx, firebaseId: firebaseId);
+          try {
+            await FirebaseDataService.saveTransaction(
+              localTx.copyWith(id: localId),
+              firebaseId: firebaseId,
+            );
+            await DatabaseHelper.instance.updateTransactionSyncStatus(
+              localId,
+              SyncStatus.synced,
+              firebaseId: firebaseId,
+            );
+          } catch (cloudErr) {
+            debugPrint(
+              '[SharePaymentScreen] Firestore save failed: $cloudErr; safely stored in local SQLite.',
+            );
+          }
         }
 
         savedCount++;

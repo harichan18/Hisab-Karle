@@ -45,6 +45,7 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
   List<TransactionModel> personTransactions = [];
   List<DeletedEntryModel> deletedTransactions = [];
   bool isLoading = true;
+  bool _isClearingAccount = false;
 
   List<_TransactionGroup> _groupTransactions(
     List<TransactionModel> transactions,
@@ -278,9 +279,11 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
     setState(() {
       isLoading = true;
     });
-    final all = await DatabaseHelper.instance.getTransactions();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final all = await DatabaseHelper.instance.getTransactions(userId: uid);
     final deleted = await DatabaseHelper.instance.getDeletedEntries(
       DatabaseHelper.personIdForName(widget.friendName),
+      userId: uid,
     );
     if (!mounted) {
       return;
@@ -325,43 +328,51 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
   }
 
   Future<void> _executeSettleAccount() async {
-    final double amountToSettle = netBalance.abs();
-    if (FirebaseAuth.instance.currentUser != null && amountToSettle != 0) {
-      try {
-        await FirebaseDataService.recordSettlement(
-          friendName: widget.friendName,
-          amount: amountToSettle,
-        );
-      } catch (e) {
-        debugPrint('Error recording settlement: $e');
+    if (_isClearingAccount) return;
+    setState(() => _isClearingAccount = true);
+    try {
+      final double amountToSettle = netBalance.abs();
+      if (FirebaseAuth.instance.currentUser != null && amountToSettle != 0) {
+        try {
+          await FirebaseDataService.recordSettlement(
+            friendName: widget.friendName,
+            amount: amountToSettle,
+          );
+        } catch (e) {
+          debugPrint('Error recording settlement: $e');
+        }
       }
-    }
 
-    final transactionsToProcess = List<TransactionModel>.from(
-      personTransactions,
-    );
-
-    for (final t in transactionsToProcess) {
-      if (t.firebaseId != null) {
-        await FirebaseDataService.clearTransaction(t);
-      }
-      if (t.id != null) {
-        await DatabaseHelper.instance.clearEntry(t.id!);
-      }
-    }
-
-    if (FirebaseAuth.instance.currentUser == null) {
-      await loadPersonTransactions();
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account cleared successfully.')),
+      final transactionsToProcess = List<TransactionModel>.from(
+        personTransactions,
       );
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      for (final t in transactionsToProcess) {
+        if (t.firebaseId != null) {
+          await FirebaseDataService.clearTransaction(t);
+        }
+        if (t.id != null) {
+          await DatabaseHelper.instance.clearEntry(t.id!, userId: uid);
+        }
+      }
+
+      if (FirebaseAuth.instance.currentUser == null) {
+        await loadPersonTransactions();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account cleared successfully.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isClearingAccount = false);
     }
   }
 
   Future<void> _clearAccount() async {
+    if (_isClearingAccount) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -459,7 +470,10 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     await FirebaseDataService.clearTransaction(t);
                   }
                   if (t.id != null) {
-                    await DatabaseHelper.instance.clearEntry(t.id!);
+                    await DatabaseHelper.instance.clearEntry(
+                      t.id!,
+                      userId: FirebaseAuth.instance.currentUser?.uid,
+                    );
                   }
                   if (FirebaseAuth.instance.currentUser == null) {
                     loadPersonTransactions();

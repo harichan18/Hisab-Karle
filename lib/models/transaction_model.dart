@@ -1,3 +1,10 @@
+class SyncStatus {
+  static const int synced = 0;
+  static const int pending = 1;
+  static const int syncing = 2;
+  static const int failed = 3;
+}
+
 class TransactionModel {
   final int? id;
   final String? firebaseId;
@@ -10,6 +17,7 @@ class TransactionModel {
   final String note;
   final String date;
   final bool iGave;
+  final int syncStatus;
 
   TransactionModel({
     this.id,
@@ -23,17 +31,23 @@ class TransactionModel {
     required this.note,
     required this.date,
     required this.iGave,
+    this.syncStatus = SyncStatus.synced,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      if (firebaseId != null) 'firebaseId': firebaseId,
+      if (peerUserId != null) 'peerUserId': peerUserId,
+      if (createdBy != null) 'createdBy': createdBy,
+      if (receiptUrl != null) 'receiptUrl': receiptUrl,
       'friendName': friendName,
       'amount': amount,
       'note': note,
       'date': date,
       'iGave': iGave ? 1 : 0,
       'receiptPath': receiptPath,
+      'sync_status': syncStatus,
     };
   }
 
@@ -54,12 +68,17 @@ class TransactionModel {
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
     return TransactionModel(
       id: map['id'],
+      firebaseId: map['firebaseId'] as String?,
+      peerUserId: map['peerUserId'] as String?,
+      createdBy: map['createdBy'] as String?,
+      receiptUrl: map['receiptUrl'] as String?,
       receiptPath: map['receiptPath'] as String?,
       friendName: map['friendName'],
       amount: (map['amount'] as num).toDouble(),
       note: map['note'],
       date: map['date'],
       iGave: map['iGave'] == 1,
+      syncStatus: (map['sync_status'] as num?)?.toInt() ?? SyncStatus.synced,
     );
   }
 
@@ -78,6 +97,7 @@ class TransactionModel {
       note: map['note'] as String? ?? '',
       date: map['date'] as String? ?? '',
       iGave: map['iGave'] == true,
+      syncStatus: SyncStatus.synced,
     );
   }
 
@@ -93,6 +113,7 @@ class TransactionModel {
     String? note,
     String? date,
     bool? iGave,
+    int? syncStatus,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -106,6 +127,7 @@ class TransactionModel {
       note: note ?? this.note,
       date: date ?? this.date,
       iGave: iGave ?? this.iGave,
+      syncStatus: syncStatus ?? this.syncStatus,
     );
   }
 }
