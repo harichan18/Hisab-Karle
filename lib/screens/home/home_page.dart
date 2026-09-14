@@ -1538,335 +1538,354 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     bool isSaving = false;
     late StateSetter setDialogState;
 
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        Future<void> handlePick(ImageSource source) async {
-          const scope = 'Home.quickAddTransaction.pickReceipt';
-          final picked = await _pickReceiptImage(source: source, scope: scope);
-          if (picked == null) {
-            return;
-          }
-          if (!dialogContext.mounted) {
-            return;
-          }
-          _receiptLog(scope, 'Applying picked image to quick-add dialog.');
-          receiptImage = picked;
-          receiptUploadProgress = 0;
-          setDialogState(() {});
-        }
-
-        Future<void> handleSave() async {
-          const scope = 'Home.quickAddTransaction.save';
-          _receiptLog(
-            scope,
-            'Save pressed. receiptSelected=${receiptImage != null}',
-          );
-          if (!(formKey.currentState?.validate() ?? false)) {
-            _receiptLog(scope, 'Form validation failed.');
-            return;
-          }
-
-          try {
-            isSaving = true;
-            if (dialogContext.mounted) {
-              setDialogState(() {});
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          Future<void> handlePick(ImageSource source) async {
+            const scope = 'Home.quickAddTransaction.pickReceipt';
+            final picked = await _pickReceiptImage(
+              source: source,
+              scope: scope,
+            );
+            if (picked == null) {
+              return;
             }
+            if (!dialogContext.mounted) {
+              return;
+            }
+            _receiptLog(scope, 'Applying picked image to quick-add dialog.');
+            receiptImage = picked;
+            receiptUploadProgress = 0;
+            setDialogState(() {});
+          }
 
-            final currentUser = FirebaseAuth.instance.currentUser;
+          Future<void> handleSave() async {
+            const scope = 'Home.quickAddTransaction.save';
+            if (isSaving) return;
             _receiptLog(
               scope,
-              'Current user=${currentUser?.uid ?? 'null'} existingReceipt=${receiptImage != null}',
+              'Save pressed. receiptSelected=${receiptImage != null}',
             );
+            if (!(formKey.currentState?.validate() ?? false)) {
+              _receiptLog(scope, 'Form validation failed.');
+              return;
+            }
 
-            String? firebaseId;
-            String? receiptPath;
-            String? receiptUrl;
+            try {
+              isSaving = true;
+              if (dialogContext.mounted) {
+                setDialogState(() {});
+              }
 
-            if (receiptImage != null) {
-              if (currentUser == null) {
-                _receiptLog(
-                  scope,
-                  'No signed-in user; local receipt save skipped and transaction will still be saved.',
-                );
-              } else {
-                firebaseId = FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(currentUser.uid)
-                    .collection('transactions')
-                    .doc()
-                    .id;
-                _receiptLog(
-                  scope,
-                  'Generated firebaseId=$firebaseId for local receipt save.',
-                );
+              final currentUser = FirebaseAuth.instance.currentUser;
+              _receiptLog(
+                scope,
+                'Current user=${currentUser?.uid ?? 'null'} existingReceipt=${receiptImage != null}',
+              );
 
-                final compressedImage = await _compressReceiptImage(
-                  File(receiptImage!.path),
-                  scope: scope,
-                );
-                if (compressedImage != null) {
-                  final compressedFile = File(compressedImage.path);
-                  receiptPath = await _saveReceiptLocally(
-                    sourceFile: compressedFile,
-                    firebaseId: firebaseId,
-                    scope: scope,
-                  );
+              String? firebaseId;
+              String? receiptPath;
+              String? receiptUrl;
 
-                  // Upload to Cloudinary
-                  try {
-                    final uri = Uri.parse(
-                      'https://api.cloudinary.com/v1_1/dxwf10vjg/image/upload',
-                    );
-                    final request = http.MultipartRequest('POST', uri)
-                      ..fields['upload_preset'] = 'receipt_upload'
-                      ..files.add(
-                        await http.MultipartFile.fromPath(
-                          'file',
-                          compressedFile.path,
-                        ),
-                      );
-
-                    final streamedResponse = await request.send();
-                    final responseBody = await streamedResponse.stream
-                        .bytesToString();
-
-                    if (streamedResponse.statusCode == 200) {
-                      final jsonResponse =
-                          jsonDecode(responseBody) as Map<String, dynamic>;
-                      receiptUrl = jsonResponse['secure_url'] as String?;
-                      _receiptLog(
-                        scope,
-                        'Cloudinary upload succeeded: $receiptUrl',
-                      );
-                    } else {
-                      _receiptLog(
-                        scope,
-                        'Cloudinary upload failed: ${streamedResponse.statusCode}',
-                      );
-                    }
-                  } catch (cloudinaryError, cloudinarySt) {
-                    _receiptLog(
-                      scope,
-                      'Cloudinary upload failed with exception: $cloudinaryError\n$cloudinarySt',
-                    );
-                  }
-                } else {
+              if (receiptImage != null) {
+                if (currentUser == null) {
                   _receiptLog(
                     scope,
-                    'Compression returned null; continuing without local receipt path.',
+                    'No signed-in user; local receipt save skipped and transaction will still be saved.',
+                  );
+                } else {
+                  firebaseId = FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(currentUser.uid)
+                      .collection('transactions')
+                      .doc()
+                      .id;
+                  _receiptLog(
+                    scope,
+                    'Generated firebaseId=$firebaseId for local receipt save.',
+                  );
+
+                  final compressedImage = await _compressReceiptImage(
+                    File(receiptImage!.path),
+                    scope: scope,
+                  );
+                  if (compressedImage != null) {
+                    final compressedFile = File(compressedImage.path);
+                    receiptPath = await _saveReceiptLocally(
+                      sourceFile: compressedFile,
+                      firebaseId: firebaseId,
+                      scope: scope,
+                    );
+
+                    // Upload to Cloudinary
+                    try {
+                      final uri = Uri.parse(
+                        'https://api.cloudinary.com/v1_1/dxwf10vjg/image/upload',
+                      );
+                      final request = http.MultipartRequest('POST', uri)
+                        ..fields['upload_preset'] = 'receipt_upload'
+                        ..files.add(
+                          await http.MultipartFile.fromPath(
+                            'file',
+                            compressedFile.path,
+                          ),
+                        );
+
+                      final streamedResponse = await request.send();
+                      final responseBody = await streamedResponse.stream
+                          .bytesToString();
+
+                      if (streamedResponse.statusCode == 200) {
+                        final jsonResponse =
+                            jsonDecode(responseBody) as Map<String, dynamic>;
+                        receiptUrl = jsonResponse['secure_url'] as String?;
+                        _receiptLog(
+                          scope,
+                          'Cloudinary upload succeeded: $receiptUrl',
+                        );
+                      } else {
+                        _receiptLog(
+                          scope,
+                          'Cloudinary upload failed: ${streamedResponse.statusCode}',
+                        );
+                      }
+                    } catch (cloudinaryError, cloudinarySt) {
+                      _receiptLog(
+                        scope,
+                        'Cloudinary upload failed with exception: $cloudinaryError\n$cloudinarySt',
+                      );
+                    }
+                  } else {
+                    _receiptLog(
+                      scope,
+                      'Compression returned null; continuing without local receipt path.',
+                    );
+                  }
+                }
+              }
+
+              final transaction = TransactionModel(
+                friendName: friendName,
+                amount: double.parse(amountController.text.trim()),
+                note: noteController.text.trim(),
+                date: dateController.text.trim(),
+                iGave: isPlus,
+                firebaseId: firebaseId,
+                createdBy: FirebaseAuth.instance.currentUser?.uid,
+                receiptPath: receiptPath,
+                receiptUrl: receiptUrl,
+              );
+
+              _receiptLog(
+                scope,
+                'Built transaction payload: ${transaction.toFirestoreMap()}',
+              );
+
+              _receiptLog(scope, 'Writing new transaction to local DB.');
+              firebaseId ??= FirebaseFirestore.instance
+                  .collection('users')
+                  .doc()
+                  .id;
+              final localTx = transaction.copyWith(
+                firebaseId: firebaseId,
+                createdBy: currentUser?.uid,
+                syncStatus: currentUser != null
+                    ? SyncStatus.pending
+                    : SyncStatus.synced,
+              );
+              final localId = await DatabaseHelper.instance.insertTransaction(
+                localTx,
+              );
+
+              if (currentUser != null) {
+                _receiptLog(scope, 'Writing new transaction to Firestore.');
+                try {
+                  await FirebaseDataService.saveTransaction(
+                    localTx.copyWith(id: localId),
+                    firebaseId: firebaseId,
+                  );
+                  await DatabaseHelper.instance.updateTransactionSyncStatus(
+                    localId,
+                    SyncStatus.synced,
+                    firebaseId: firebaseId,
+                  );
+                } catch (cloudErr) {
+                  _receiptLog(
+                    scope,
+                    'Cloud save queued/failed: $cloudErr; safely stored in local SQLite.',
                   );
                 }
               }
-            }
 
-            final transaction = TransactionModel(
-              friendName: friendName,
-              amount: double.parse(amountController.text.trim()),
-              note: noteController.text.trim(),
-              date: dateController.text.trim(),
-              iGave: isPlus,
-              firebaseId: firebaseId,
-              createdBy: FirebaseAuth.instance.currentUser?.uid,
-              receiptPath: receiptPath,
-              receiptUrl: receiptUrl,
-            );
-
-            _receiptLog(
-              scope,
-              'Built transaction payload: ${transaction.toFirestoreMap()}',
-            );
-
-            _receiptLog(scope, 'Writing new transaction to local DB.');
-            firebaseId ??= FirebaseFirestore.instance
-                .collection('users')
-                .doc()
-                .id;
-            final localTx = transaction.copyWith(
-              firebaseId: firebaseId,
-              createdBy: currentUser?.uid,
-              syncStatus: currentUser != null
-                  ? SyncStatus.pending
-                  : SyncStatus.synced,
-            );
-            final localId = await DatabaseHelper.instance.insertTransaction(
-              localTx,
-            );
-
-            if (currentUser != null) {
-              _receiptLog(scope, 'Writing new transaction to Firestore.');
-              try {
-                await FirebaseDataService.saveTransaction(
-                  localTx.copyWith(id: localId),
-                  firebaseId: firebaseId,
-                );
-                await DatabaseHelper.instance.updateTransactionSyncStatus(
-                  localId,
-                  SyncStatus.synced,
-                  firebaseId: firebaseId,
-                );
-              } catch (cloudErr) {
-                _receiptLog(
-                  scope,
-                  'Cloud save queued/failed: $cloudErr; safely stored in local SQLite.',
+              _receiptLog(scope, 'Save finished successfully.');
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext, true);
+              }
+            } catch (e, st) {
+              _receiptLog(scope, 'Save failed: $e\n$st');
+              if (dialogContext.mounted) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Failed to save transaction. Please try again.',
+                    ),
+                  ),
                 );
               }
-            }
-
-            _receiptLog(scope, 'Save finished successfully.');
-            if (dialogContext.mounted) {
-              Navigator.pop(dialogContext, true);
-            }
-          } catch (e, st) {
-            _receiptLog(scope, 'Save failed: $e\n$st');
-            if (dialogContext.mounted) {
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Failed to save transaction. Please try again.',
-                  ),
-                ),
-              );
-            }
-          } finally {
-            isSaving = false;
-            if (dialogContext.mounted) {
-              setDialogState(() {});
+            } finally {
+              isSaving = false;
+              if (dialogContext.mounted) {
+                setDialogState(() {});
+              }
             }
           }
-        }
 
-        return StatefulBuilder(
-          builder: (context, stateSetter) {
-            setDialogState = stateSetter;
-            return AlertDialog(
-              title: Text(
-                isPlus
-                    ? "Give Money to $friendName"
-                    : "Take Money from $friendName",
-                style: TextStyle(
-                  color: isPlus ? Colors.green : Colors.red,
-                  fontWeight: FontWeight.bold,
+          return StatefulBuilder(
+            builder: (context, stateSetter) {
+              setDialogState = stateSetter;
+              return AlertDialog(
+                title: Text(
+                  isPlus
+                      ? "Give Money to $friendName"
+                      : "Take Money from $friendName",
+                  style: TextStyle(
+                    color: isPlus ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: amountController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: "Money (Amount)",
-                          prefixText: "\u20B9",
+                content: Form(
+                  key: formKey,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: amountController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: "Money (Amount)",
+                            prefixText: "\u20B9",
+                          ),
+                          validator: (val) {
+                            if (val == null || val.trim().isEmpty) {
+                              return "Please enter amount";
+                            }
+                            final parsed = double.tryParse(val.trim());
+                            if (parsed == null ||
+                                parsed.isNaN ||
+                                parsed.isInfinite) {
+                              return "Please enter a valid number";
+                            }
+                            if (parsed <= 0) {
+                              return "Amount must be greater than 0";
+                            }
+                            if (parsed > 100000000) {
+                              return "Amount is too large";
+                            }
+                            return null;
+                          },
                         ),
-                        validator: (val) {
-                          if (val == null || val.isEmpty) {
-                            return "Please enter amount";
-                          }
-                          if (double.tryParse(val) == null) {
-                            return "Please enter a valid number";
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: noteController,
-                        decoration: const InputDecoration(labelText: "Note"),
-                        validator: (val) {
-                          if (val == null || val.isEmpty) {
-                            return "Please enter a note";
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: dateController,
-                              decoration: const InputDecoration(
-                                labelText: "Date",
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: noteController,
+                          decoration: const InputDecoration(labelText: "Note"),
+                          validator: (val) {
+                            if (val == null || val.trim().isEmpty) {
+                              return "Please enter a note";
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: dateController,
+                                decoration: const InputDecoration(
+                                  labelText: "Date",
+                                ),
+                                validator: (val) {
+                                  if (val == null || val.isEmpty) {
+                                    return "Please enter date";
+                                  }
+                                  return null;
+                                },
                               ),
-                              validator: (val) {
-                                if (val == null || val.isEmpty) {
-                                  return "Please enter date";
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.calendar_month),
+                              onPressed: () async {
+                                final selected = await showDatePicker(
+                                  context: dialogContext,
+                                  initialDate: DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (selected != null) {
+                                  dateController.text =
+                                      "${selected.year}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}";
+                                  setDialogState(() {});
                                 }
-                                return null;
                               },
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.calendar_month),
-                            onPressed: () async {
-                              final selected = await showDatePicker(
-                                context: dialogContext,
-                                initialDate: DateTime.now(),
-                                firstDate: DateTime(2000),
-                                lastDate: DateTime(2100),
-                              );
-                              if (selected != null) {
-                                dateController.text =
-                                    "${selected.year}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}";
-                                setDialogState(() {});
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ReceiptAttachmentSection(
-                        receiptImage: receiptImage,
-                        receiptUploadProgress: receiptUploadProgress,
-                        onPick: (source) async {
-                          await handlePick(source);
-                        },
-                        onClear: () {
-                          _receiptLog(
-                            'Home.quickAddTransaction.clearReceipt',
-                            'Clearing selected receipt image.',
-                          );
-                          receiptImage = null;
-                          receiptUploadProgress = 0;
-                          setDialogState(() {});
-                        },
-                      ),
-                      if (isSaving) ...[
+                          ],
+                        ),
                         const SizedBox(height: 12),
-                        const LinearProgressIndicator(),
+                        ReceiptAttachmentSection(
+                          receiptImage: receiptImage,
+                          receiptUploadProgress: receiptUploadProgress,
+                          onPick: (source) async {
+                            await handlePick(source);
+                          },
+                          onClear: () {
+                            _receiptLog(
+                              'Home.quickAddTransaction.clearReceipt',
+                              'Clearing selected receipt image.',
+                            );
+                            receiptImage = null;
+                            receiptUploadProgress = 0;
+                            setDialogState(() {});
+                          },
+                        ),
+                        if (isSaving) ...[
+                          const SizedBox(height: 12),
+                          const LinearProgressIndicator(),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSaving
-                      ? null
-                      : () => Navigator.pop(dialogContext, false),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving ? null : handleSave,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isPlus ? Colors.green : Colors.red,
-                    foregroundColor: Colors.white,
+                actions: [
+                  TextButton(
+                    onPressed: isSaving
+                        ? null
+                        : () => Navigator.pop(dialogContext, false),
+                    child: const Text("Cancel"),
                   ),
-                  child: const Text("Save"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+                  ElevatedButton(
+                    onPressed: isSaving ? null : handleSave,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isPlus ? Colors.green : Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text("Save"),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
 
-    if (saved == true) {
-      await refreshDashboard();
+      if (saved == true) {
+        await refreshDashboard();
+      }
+    } finally {
+      amountController.dispose();
+      noteController.dispose();
+      dateController.dispose();
     }
   }
 

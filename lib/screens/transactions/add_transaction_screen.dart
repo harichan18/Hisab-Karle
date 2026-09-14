@@ -78,6 +78,35 @@ class _AddPageState extends State<AddPage> {
   Future<void> saveTransaction() async {
     const scope = 'AddPage.saveTransaction';
     if (_isSaving) return;
+
+    final friendName = friendController.text.trim();
+    if (friendName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a friend name.')),
+      );
+      return;
+    }
+
+    final rawAmount = amountController.text.trim();
+    final parsedAmount = double.tryParse(rawAmount);
+    if (parsedAmount == null ||
+        parsedAmount <= 0 ||
+        parsedAmount.isNaN ||
+        parsedAmount.isInfinite) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid positive amount.')),
+      );
+      return;
+    }
+    if (parsedAmount > 100000000) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Amount is too large (maximum ₹10,00,00,000).'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
     receiptLog(
       scope,
@@ -191,8 +220,8 @@ class _AddPageState extends State<AddPage> {
         createdBy: widget.transaction?.createdBy ?? currentUser?.uid,
         receiptUrl: receiptUrl,
         receiptPath: receiptPath,
-        friendName: friendController.text.trim(),
-        amount: double.parse(amountController.text),
+        friendName: friendName,
+        amount: parsedAmount,
         note: noteController.text.trim(),
         date: dateController.text.trim(),
         iGave: iGave,

@@ -255,46 +255,66 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       _isAnalyzing = true;
     });
 
-    final info = await PaymentOcrService.instance.processScreenshot(
-      widget.imagePath,
-    );
+    try {
+      final info = await PaymentOcrService.instance.processScreenshot(
+        widget.imagePath,
+      );
 
-    if (mounted) {
-      setState(() {
-        _extractedInfo = info;
-        _isAnalyzing = false;
+      if (mounted) {
+        setState(() {
+          _extractedInfo = info;
 
-        // If new extraction extracted a valid positive amount, update the field.
-        // If it failed/returned null, preserve previous valid amount instead of resetting to 0.
-        if (info.amount != null && info.amount! > 0) {
-          _amountController.text = AmountParser.formatForInput(info.amount);
-          _syncSplitInputs();
-        } else if (previousAmount != null && previousAmount > 0) {
-          _amountController.text = AmountParser.formatForInput(previousAmount);
-          _syncSplitInputs();
-        }
+          // If new extraction extracted a valid positive amount, update the field.
+          // If it failed/returned null, preserve previous valid amount instead of resetting to 0.
+          if (info.amount != null && info.amount! > 0) {
+            _amountController.text = AmountParser.formatForInput(info.amount);
+            _syncSplitInputs();
+          } else if (previousAmount != null && previousAmount > 0) {
+            _amountController.text = AmountParser.formatForInput(
+              previousAmount,
+            );
+            _syncSplitInputs();
+          }
 
-        if (info.dateString != null && info.dateString!.isNotEmpty) {
-          _dateController.text = info.dateString!;
-        }
+          if (info.dateString != null && info.dateString!.isNotEmpty) {
+            _dateController.text = info.dateString!;
+          }
 
-        // Build prefilled note cleanly without fake placeholders
-        final parts = <String>[];
-        if (info.appName != null && info.appName!.isNotEmpty) {
-          parts.add("${info.appName!} Payment");
-        } else {
-          parts.add("Payment");
-        }
-        if (info.receiverName != null && info.receiverName!.isNotEmpty) {
-          parts.add("to ${info.receiverName}");
-        }
-        if (info.transactionRef != null && info.transactionRef!.isNotEmpty) {
-          parts.add("(Ref: ${info.transactionRef})");
-        }
-        _noteController.text = parts.join(" ");
-      });
+          // Build prefilled note cleanly without fake placeholders
+          final parts = <String>[];
+          if (info.appName != null && info.appName!.isNotEmpty) {
+            parts.add("${info.appName!} Payment");
+          } else {
+            parts.add("Payment");
+          }
+          if (info.receiverName != null && info.receiverName!.isNotEmpty) {
+            parts.add("to ${info.receiverName}");
+          }
+          if (info.transactionRef != null && info.transactionRef!.isNotEmpty) {
+            parts.add("(Ref: ${info.transactionRef})");
+          }
+          _noteController.text = parts.join(" ");
+        });
 
-      _matchSuggestedReceiver();
+        _matchSuggestedReceiver();
+      }
+    } catch (e) {
+      debugPrint('[SharePayment] OCR analysis error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not auto-extract payment details. You can enter them manually.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAnalyzing = false;
+        });
+      }
     }
   }
 

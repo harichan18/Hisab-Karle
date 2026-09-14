@@ -745,30 +745,30 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
-    String? receiptUrl = _existingReceiptUrl;
-
-    if (_receiptImage != null) {
-      final uploadedUrl = await _compressAndUploadReceipt(
-        File(_receiptImage!.path),
-      );
-      if (!mounted) return;
-      if (uploadedUrl != null) {
-        receiptUrl = uploadedUrl;
-      }
-    }
-
-    final expense = ExpenseModel(
-      id: widget.expense?.id,
-      userId: widget.userId,
-      amount: double.parse(_amountController.text),
-      category: _selectedCategory,
-      description: _descController.text.trim(),
-      expenseDate: _selectedDate,
-      receiptUrl: receiptUrl,
-      createdAt: widget.expense?.createdAt ?? DateTime.now(),
-    );
-
     try {
+      String? receiptUrl = _existingReceiptUrl;
+
+      if (_receiptImage != null) {
+        final uploadedUrl = await _compressAndUploadReceipt(
+          File(_receiptImage!.path),
+        );
+        if (!mounted) return;
+        if (uploadedUrl != null) {
+          receiptUrl = uploadedUrl;
+        }
+      }
+
+      final expense = ExpenseModel(
+        id: widget.expense?.id,
+        userId: widget.userId,
+        amount: double.parse(_amountController.text.trim()),
+        category: _selectedCategory,
+        description: _descController.text.trim(),
+        expenseDate: _selectedDate,
+        receiptUrl: receiptUrl,
+        createdAt: widget.expense?.createdAt ?? DateTime.now(),
+      );
+
       if (widget.expense == null) {
         await ExpenseService.createExpense(expense);
       } else {
@@ -843,7 +843,16 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                   if (val == null || val.trim().isEmpty) {
                     return 'Please enter amount';
                   }
-                  if (double.tryParse(val) == null) return 'Invalid number';
+                  final parsed = double.tryParse(val.trim());
+                  if (parsed == null || parsed.isNaN || parsed.isInfinite) {
+                    return 'Please enter a valid number';
+                  }
+                  if (parsed <= 0) {
+                    return 'Amount must be greater than 0';
+                  }
+                  if (parsed > 100000000) {
+                    return 'Amount is too large';
+                  }
                   return null;
                 },
               ),

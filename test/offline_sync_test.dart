@@ -45,7 +45,23 @@ CREATE TABLE IF NOT EXISTS personal_expenses(
   receiptUrl TEXT,
   createdAt TEXT,
   sync_status INTEGER DEFAULT 0
-)
+);
+''');
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS deleted_entries(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  originalEntryId INTEGER,
+  personId INTEGER,
+  userId TEXT,
+  friendName TEXT,
+  date TEXT,
+  note TEXT,
+  amount REAL,
+  isGiven INTEGER,
+  clearedDate TEXT,
+  receiptPath TEXT,
+  receiptUrl TEXT
+);
 ''');
         },
       );
@@ -785,5 +801,146 @@ receiptPath TEXT
       expect(allMatching.first['amount'], 250.0);
       expect(allMatching.first['sync_status'], SyncStatus.synced);
     });
+
+    test(
+      '17. Restoring a deleted transaction preserves createdBy, receiptUrl, and sync_status',
+      () async {
+        // User deletes a transaction with receipt and ownership
+        final deletedRowId = await db.insert('deleted_entries', {
+          'originalEntryId': 42,
+          'personId': 101,
+          'userId': 'user_owner_abc',
+          'friendName': 'Rohan',
+          'date': '2026-09-15',
+          'note': 'Restored lunch payment',
+          'amount': 350.0,
+          'isGiven': 1,
+          'clearedDate': '2026-09-15',
+          'receiptPath': '/data/user/0/receipts/img_01.jpg',
+          'receiptUrl':
+              'https://res.cloudinary.com/test/image/upload/v1/receipt_01.jpg',
+        });
+
+        // Simulate DatabaseHelper.restoreDeletedEntry
+        final rows = await db.query(
+          'deleted_entries',
+          where: 'id = ?',
+          whereArgs: [deletedRowId],
+        );
+        final deletedEntry = rows.first;
+
+        await db.insert('transactions', {
+          'createdBy': deletedEntry['userId'],
+          'friendName': deletedEntry['friendName'],
+          'amount': deletedEntry['amount'],
+          'note': deletedEntry['note'],
+          'date': deletedEntry['date'],
+          'iGave': deletedEntry['isGiven'],
+          'receiptPath': deletedEntry['receiptPath'],
+          'receiptUrl': deletedEntry['receiptUrl'],
+          'sync_status': SyncStatus.synced,
+        });
+        await db.delete(
+          'deleted_entries',
+          where: 'id = ?',
+          whereArgs: [deletedRowId],
+        );
+
+        // Verify the restored transaction in transactions table
+        final restoredRows = await db.query(
+          'transactions',
+          where: 'createdBy = ?',
+          whereArgs: ['user_owner_abc'],
+        );
+        expect(restoredRows.length, 1);
+        final restored = restoredRows.first;
+        expect(
+          restored['createdBy'],
+          'user_owner_abc',
+          reason:
+              'Restored transaction must preserve creator UID for multi-user isolation',
+        );
+        expect(
+          restored['receiptUrl'],
+          'https://res.cloudinary.com/test/image/upload/v1/receipt_01.jpg',
+          reason: 'Restored transaction must preserve Cloudinary receipt URL',
+        );
+        expect(restored['receiptPath'], '/data/user/0/receipts/img_01.jpg');
+        expect(restored['sync_status'], SyncStatus.synced);
+
+        // Verify it was deleted from deleted_entries
+        final remainingDeleted = await db.query(
+          'deleted_entries',
+          where: 'id = ?',
+          whereArgs: [deletedRowId],
+        );
+        expect(remainingDeleted, isEmpty);
+      },
+    );
+
+    test(
+      '18. Financial validation logic rejects 0, negative, NaN, and excessive amounts',
+      () {
+        bool isValidFinancialAmount(String input) {
+          final trimmed = input.trim();
+          if (trimmed.isEmpty) return false;
+          final parsed = double.tryParse(trimmed);
+          if (parsed == null || parsed.isNaN || parsed.isInfinite) return false;
+          if (parsed <= 0) return false;
+          if (parsed > 100000000) return false;
+          return true;
+        }
+
+        // Valid amounts
+        expect(isValidFinancialAmount('100'), isTrue);
+        expect(isValidFinancialAmount('0.50'), isTrue);
+        expect(isValidFinancialAmount('99999999.99'), isTrue);
+
+        // Invalid amounts
+        expect(isValidFinancialAmount(''), isFalse);
+        expect(isValidFinancialAmount('   '), isFalse);
+        expect(isValidFinancialAmount('0'), isFalse);
+        expect(isValidFinancialAmount('-50'), isFalse);
+        expect(isValidFinancialAmount('abc'), isFalse);
+        expect(isValidFinancialAmount('NaN'), isFalse);
+        expect(isValidFinancialAmount('Infinity'), isFalse);
+        expect(
+          isValidFinancialAmount('100000001'),
+          isFalse,
+        ); // exceeds 10 crore
+      },
+    );
+
+    test(
+      '19. Double-tap prevention guard rejects concurrent execution',
+      () async {
+        bool isExecuting = false;
+        int executionCount = 0;
+
+        Future<void> guardedOperation() async {
+          if (isExecuting) return;
+          isExecuting = true;
+          try {
+            executionCount++;
+            await Future.delayed(const Duration(milliseconds: 50));
+          } finally {
+            isExecuting = false;
+          }
+        }
+
+        // Simulate rapid multi-taps
+        await Future.wait([
+          guardedOperation(),
+          guardedOperation(),
+          guardedOperation(),
+        ]);
+
+        expect(
+          executionCount,
+          1,
+          reason: 'Rapid multi-taps must execute only once',
+        );
+      },
+    );
   });
 }

@@ -349,12 +349,15 @@ value TEXT
       final deletedEntry = rows.first;
 
       await txn.insert('transactions', {
+        'createdBy': deletedEntry['userId'],
         'friendName': deletedEntry['friendName'],
         'amount': deletedEntry['amount'],
         'note': deletedEntry['note'],
         'date': deletedEntry['date'],
         'iGave': deletedEntry['isGiven'],
         'receiptPath': deletedEntry['receiptPath'],
+        'receiptUrl': deletedEntry['receiptUrl'],
+        'sync_status': SyncStatus.synced,
       });
 
       await txn.delete(

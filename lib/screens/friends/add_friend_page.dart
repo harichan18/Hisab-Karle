@@ -26,6 +26,7 @@ class _AddFriendPageState extends State<AddFriendPage> {
   }
 
   Future<void> searchFriend() async {
+    if (isSearching) return;
     final code = friendCodeController.text.trim();
     if (code.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -101,6 +102,7 @@ class _AddFriendPageState extends State<AddFriendPage> {
   }
 
   Future<void> addFriend() async {
+    if (isAdding) return;
     final currentUser = FirebaseAuth.instance.currentUser;
     final friend = foundUser;
 
