@@ -2,40 +2,41 @@
 
 ### More than an expense tracker. More than a regular *hisab-kitab*.
 
-**Hisab Kitab** is a Flutter-based personal money management application that combines **personal expenses and peer-to-peer transactions** in one place.
+**Hisab Kitab** is a personal finance management application designed to make it easy to track money given to friends, money received from friends, daily expenses, and personal balances in one place.
 
-Unlike a regular expense tracker that only answers *“Where did I spend my money?”*, Hisab Kitab also answers:
+The goal is simple:
 
-* **Who do I need to pay?**
-* **Who owes me?**
-* **How much have I given or received?**
-* **What is my actual balance?**
-* **Where did my money go?**
-* **Can I keep proof of my payments?**
+> **Know where your money is going, who owes you, and how much you actually have.**
 
-> **Track your spending. Track your people. Track your money.**
+---
 
-## Why Hisab Kitab?
+## Overview
 
-Most expense trackers focus only on personal spending.
-Most *hisab-kitab* apps focus only on money exchanged between people.
+Managing small transactions between friends can quickly become confusing.
 
-**Hisab Kitab brings both together.**
+You might give ₹500 to a friend, receive ₹200 back, spend ₹150 on food, and later forget exactly how much is still pending.
 
-### Key Features
+Hisab Kitab solves this by keeping a structured record of transactions and providing a clear overview of your financial activity.
 
-* 👥 Friend-wise money tracking
-* 💸 Give & Receive transactions
-* 💰 Personal expense tracking
-* 📊 Overall financial summary
-* 📜 Complete transaction history
-* 📸 UPI payment screenshot attachments
-* 📄 PDF transaction reports
-* 🔐 App security with device authentication
-* ☁️ Cloud storage for payment proofs
-* 📱 Cross-platform Flutter application
+---
 
-## How It Works
+## Features
+
+### Friend-wise Money Tracking
+
+Keep a separate transaction history for every friend.
+
+Track:
+
+* Money you gave
+* Money you received
+* Transaction notes
+* Transaction date
+* Current balance with each friend
+
+### Give and Receive Transactions
+
+Quickly record transactions using simple actions.
 
 ```text
                  YOUR MONEY
@@ -72,15 +73,118 @@ flutter pub get
 flutter run
 ```
 
-## Future Scope
+For Chrome:
 
-* Financial analytics and spending insights
-* Payment reminders
-* Recurring transactions
-* Advanced charts and reports
-* UPI integrations
-* Multi-device synchronization
-* CSV export
+```bash
+flutter run -d chrome
+```
+
+For an Android device:
+
+```bash
+flutter devices
+flutter run
+```
+
+---
+
+## Local Database
+
+Hisab Kitab uses SQLite for storing transaction information locally.
+
+A transaction can contain information such as:
+
+```text
+Transaction
+|
++-- ID
++-- Friend ID
++-- Amount
++-- Type
++-- Note
++-- Date
++-- Attachment
+```
+
+This allows the application to work with locally stored financial data without requiring a constant internet connection for basic functionality.
+
+---
+
+## Transaction Logic
+
+The application distinguishes between money given and money received.
+
+For example:
+
+```text
+You give Rahul ₹500
+
+Rahul
+Balance: +₹500
+```
+
+If Rahul returns ₹200:
+
+```text
+Rahul
+Given:      ₹500
+Received:   ₹200
+Pending:    ₹300
+```
+
+This makes the outstanding amount easy to understand.
+
+---
+
+## UI Design Philosophy
+
+Hisab Kitab focuses on a simple, clean, and practical interface.
+
+The main design goals are:
+
+* Minimal number of steps
+* Clear financial information
+* Easy transaction entry
+* Friend-wise organization
+* Mobile-first interface
+* Easy-to-read balances
+* Consistent visual hierarchy
+
+---
+
+## Future Improvements
+
+* [ ] Advanced monthly analytics
+* [ ] Expense categories
+* [ ] Spending charts
+* [ ] Monthly financial reports
+* [ ] Automatic cloud synchronization
+* [ ] Multi-device synchronization
+* [ ] UPI deep links
+* [ ] Payment reminders
+* [ ] Recurring transactions
+* [ ] CSV export
+* [ ] Improved biometric security
+* [ ] Dark and light themes
+* [ ] Search and filter transactions
+* [ ] Monthly spending limits
+* [ ] Financial insights
+
+---
+
+## Project Goals
+
+Hisab Kitab is being developed to provide a lightweight alternative to complicated expense-management applications.
+
+The primary goals are:
+
+**Simple. Fast. Private. Useful.**
+
+Instead of trying to become a full-scale banking application, Hisab Kitab focuses on solving a common everyday problem:
+
+> **Keeping track of small personal transactions without the headache of maintaining them manually.**
+
+---
 
 ## Developer
 
