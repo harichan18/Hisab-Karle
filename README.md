@@ -138,7 +138,7 @@ graph TD
 
 ### Architectural Highlights
 - **Decomposed Architecture:** Clear boundaries between presentation screens, domain business logic services, data models, and database access helpers.
-- **Two-Tier Data Flow:** All operations target SQLite first for zero-latency user interaction, with `SyncService` asynchronously reconciling local state with Cloud Firestore.
+- **Two-Tier Data Flow:** All operations target SQLite first for immediate local persistence and responsive user interaction, with `SyncService` asynchronously reconciling local state with Cloud Firestore.
 - **Atomic Operations:** Mirrored cloud writes utilize Firestore `WriteBatch` to ensure bilateral transactions either commit together or fail safely without partial state.
 
 ---
@@ -305,16 +305,16 @@ Measured Line Coverage:  ~41.6% overall executable line coverage
 ```
 
 ### Test Suite Breakdown
-1. **[test/payment_ocr_test.dart](file:///d:/hisab_kitab/test/payment_ocr_test.dart) (23 tests):** Regression test suite covering real payment screenshots (PhonePe, GPay, Navi, Slice), amount parser, Devanagari normalization, and deterministic date extraction.
-2. **[test/offline_sync_test.dart](file:///d:/hisab_kitab/test/offline_sync_test.dart) (19 tests):** Sync queue state machine, v8 to v9 migration, interrupted sync recovery, and retry idempotency.
-3. **[test/transaction_business_logic_test.dart](file:///d:/hisab_kitab/test/transaction_business_logic_test.dart) (14 tests):** Directional balance math, multi-transaction aggregation, soft deletion, restoration, and peer mirroring logic.
-4. **[test/split_calculator_test.dart](file:///d:/hisab_kitab/test/split_calculator_test.dart) (13 tests):** 7-way splits, micro-amounts (1 paisa, 5 paise), decimal splits, and custom validation boundaries.
-5. **[test/financial_input_validation_test.dart](file:///d:/hisab_kitab/test/financial_input_validation_test.dart) (12 tests):** Boundary testing rejecting zero, negative, NaN, infinity, and excessive amounts (> ₹10 crore).
-6. **[test/settlement_test.dart](file:///d:/hisab_kitab/test/settlement_test.dart) (9 tests):** Full, partial, zero-balance, over-settlement, sequential settlement, and settlement history logging.
-7. **[test/daily_expense_test.dart](file:///d:/hisab_kitab/test/daily_expense_test.dart) (8 tests):** Expense CRUD, category preservation, date range queries, and user ownership isolation.
-8. **[test/multi_user_isolation_and_auth_test.dart](file:///d:/hisab_kitab/test/multi_user_isolation_and_auth_test.dart) (7 tests):** User scoping, cross-account query boundaries, and login/logout transitions.
-9. **[test/receipt_lifecycle_and_errors_test.dart](file:///d:/hisab_kitab/test/receipt_lifecycle_and_errors_test.dart) (7 tests):** Local receipt persistence, upload failure retention, corrupted OCR safety, and crash recovery.
-10. **[test/database_migration_test.dart](file:///d:/hisab_kitab/test/database_migration_test.dart) (2 tests):** Safe v8 to v9 schema migration verifying column additions without data loss.
+1. **[test/payment_ocr_test.dart](test/payment_ocr_test.dart) (23 tests):** Regression test suite covering real payment screenshots (PhonePe, GPay, Navi, Slice), amount parser, Devanagari normalization, and deterministic date extraction.
+2. **[test/offline_sync_test.dart](test/offline_sync_test.dart) (19 tests):** Sync queue state machine, v8 to v9 migration, interrupted sync recovery, and retry idempotency.
+3. **[test/transaction_business_logic_test.dart](test/transaction_business_logic_test.dart) (14 tests):** Directional balance math, multi-transaction aggregation, soft deletion, restoration, and peer mirroring logic.
+4. **[test/split_calculator_test.dart](test/split_calculator_test.dart) (13 tests):** 7-way splits, micro-amounts (1 paisa, 5 paise), decimal splits, and custom validation boundaries.
+5. **[test/financial_input_validation_test.dart](test/financial_input_validation_test.dart) (12 tests):** Boundary testing rejecting zero, negative, NaN, infinity, and excessive amounts (> ₹10 crore).
+6. **[test/settlement_test.dart](test/settlement_test.dart) (9 tests):** Full, partial, zero-balance, over-settlement, sequential settlement, and settlement history logging.
+7. **[test/daily_expense_test.dart](test/daily_expense_test.dart) (8 tests):** Expense CRUD, category preservation, date range queries, and user ownership isolation.
+8. **[test/multi_user_isolation_and_auth_test.dart](test/multi_user_isolation_and_auth_test.dart) (7 tests):** User scoping, cross-account query boundaries, and login/logout transitions.
+9. **[test/receipt_lifecycle_and_errors_test.dart](test/receipt_lifecycle_and_errors_test.dart) (7 tests):** Local receipt persistence, upload failure retention, corrupted OCR safety, and crash recovery.
+10. **[test/database_migration_test.dart](test/database_migration_test.dart) (2 tests):** Safe v8 to v9 schema migration verifying column additions without data loss.
 
 ### Running Verification Locally
 
@@ -439,7 +439,17 @@ Planned future enhancements:
 
 ## Screenshots
 
-> *Application screenshots and visual UI walkthroughs will be added here in an upcoming release.*
+> Real device UI screenshots and visual walkthroughs will be added here in an upcoming release.
+
+Recommended showcase screens:
+1. **Home / Dashboard:** Net directional balances and recent activity overview.
+2. **Person Ledger:** Individual bilateral transaction histories and status chips.
+3. **Add Transaction / Payment OCR:** On-device camera/gallery screenshot parsing.
+4. **Settlement Flow:** Full and partial debt clearing with reconciliation.
+5. **Daily Expenses:** Categorized personal expenditure tracking.
+6. **Split Calculator:** Integer-paise equal and percentage split breakdown.
+7. **Reports & Analytics:** Spending category distributions and period summaries.
+8. **Offline Sync Status:** Visual indicators for local pending and synced states.
 
 ---
 
