@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../main.dart'; // For ProfilePage
+import '../core/storage/app_prefs.dart';
+import '../theme/theme_helper.dart';
+import 'auth/profile_page.dart';
 import 'daily_expenditure_screen.dart';
 import 'reports_screen.dart';
 import 'deleted_transactions_screen.dart';
@@ -60,16 +62,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildSectionHeader('Appearance', isDark),
               _buildCardContainer([
                 ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 2,
+                  ),
                   leading: Container(
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E222A) : const Color(0xFFFEF3C7),
+                      color: isDark
+                          ? const Color(0xFF1E222A)
+                          : const Color(0xFFFEF3C7),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      _isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                      _isDarkMode
+                          ? Icons.dark_mode_rounded
+                          : Icons.light_mode_rounded,
                       color: const Color(0xFFF59E0B),
                       size: 18,
                     ),
@@ -79,14 +88,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                      color: isDark
+                          ? AppColors.textPrimaryDark
+                          : AppColors.textPrimary,
                     ),
                   ),
                   subtitle: Text(
                     _isDarkMode ? 'Dark Mode' : 'Light Mode',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                      color: isDark
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondary,
                     ),
                   ),
                   trailing: Switch.adaptive(
@@ -98,7 +111,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _isDarkMode = value;
                       });
                       await AppPrefs.setDarkMode(value);
-                      themeModeNotifier.value = value ? ThemeMode.dark : ThemeMode.light;
+                      themeModeNotifier.value = value
+                          ? ThemeMode.dark
+                          : ThemeMode.light;
                     },
                   ),
                 ),
@@ -110,23 +125,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildCardContainer([
                 _buildSettingsTile(
                   icon: Icons.receipt_long_rounded,
-                  iconBg: isDark ? const Color(0xFF1E222A) : const Color(0xFFF3F4F6),
-                  iconColor: isDark ? const Color(0xFF94A3B8) : AppColors.textPrimary,
+                  iconBg: isDark
+                      ? const Color(0xFF1E222A)
+                      : const Color(0xFFF3F4F6),
+                  iconColor: isDark
+                      ? const Color(0xFF94A3B8)
+                      : AppColors.textPrimary,
                   title: 'Daily Expenditure',
                   subtitle: 'Track your personal daily spending & budget',
                   isDark: isDark,
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const DailyExpenditureScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const DailyExpenditureScreen(),
+                      ),
                     );
                   },
                 ),
                 _buildTileDivider(isDark),
                 _buildSettingsTile(
                   icon: Icons.bar_chart_rounded,
-                  iconBg: isDark ? const Color(0xFF1E222A) : const Color(0xFFF3F4F6),
-                  iconColor: isDark ? const Color(0xFF94A3B8) : AppColors.textPrimary,
+                  iconBg: isDark
+                      ? const Color(0xFF1E222A)
+                      : const Color(0xFFF3F4F6),
+                  iconColor: isDark
+                      ? const Color(0xFF94A3B8)
+                      : AppColors.textPrimary,
                   title: 'Reports & Analytics',
                   subtitle: 'Income, spending patterns & analytics',
                   isDark: isDark,
@@ -148,7 +173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const DeletedTransactionsScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const DeletedTransactionsScreen(),
+                      ),
                     );
                   },
                 ),
@@ -160,8 +187,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildCardContainer([
                 _buildSettingsTile(
                   icon: Icons.person_outline_rounded,
-                  iconBg: isDark ? const Color(0xFF1E222A) : const Color(0xFFF3F4F6),
-                  iconColor: isDark ? const Color(0xFF94A3B8) : AppColors.textPrimary,
+                  iconBg: isDark
+                      ? const Color(0xFF1E222A)
+                      : const Color(0xFFF3F4F6),
+                  iconColor: isDark
+                      ? const Color(0xFF94A3B8)
+                      : AppColors.textPrimary,
                   title: 'Profile & Payment Details',
                   subtitle: 'Manage name, photo, UPI ID & mobile number',
                   isDark: isDark,
@@ -180,8 +211,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildCardContainer([
                 _buildSettingsTile(
                   icon: Icons.info_outline_rounded,
-                  iconBg: isDark ? const Color(0xFF1E222A) : const Color(0xFFF3F4F6),
-                  iconColor: isDark ? const Color(0xFF94A3B8) : AppColors.textSecondary,
+                  iconBg: isDark
+                      ? const Color(0xFF1E222A)
+                      : const Color(0xFFF3F4F6),
+                  iconColor: isDark
+                      ? const Color(0xFF94A3B8)
+                      : AppColors.textSecondary,
                   title: 'About Hisab Kitab',
                   subtitle: 'Version 1.0.0 • Terms & Credits',
                   isDark: isDark,
@@ -205,18 +240,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark ? AppColors.surfaceDark : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                      color: isDark
+                          ? AppColors.borderDark
+                          : AppColors.borderLight,
                       width: 0.8,
                     ),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.logout_rounded, color: AppColors.payText, size: 20),
+                      Icon(
+                        Icons.logout_rounded,
+                        color: AppColors.payText,
+                        size: 20,
+                      ),
                       SizedBox(width: 12),
                       Text(
                         'Manage Account & Sign Out',
@@ -227,7 +271,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       Spacer(),
-                      Icon(Icons.chevron_right_rounded, color: AppColors.textMuted, size: 20),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.textMuted,
+                        size: 20,
+                      ),
                     ],
                   ),
                 ),
@@ -271,9 +319,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
-      child: Column(
-        children: children,
-      ),
+      child: Column(children: children),
     );
   }
 
@@ -295,9 +341,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           color: iconBg,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Center(
-          child: Icon(icon, color: iconColor, size: 18),
-        ),
+        child: Center(child: Icon(icon, color: iconColor, size: 18)),
       ),
       title: Text(
         title,

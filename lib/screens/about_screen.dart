@@ -8,8 +8,12 @@ class AboutScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
-    final subtextColor = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final textColor = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+    final subtextColor = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondary;
     final cardBg = isDark ? AppColors.surfaceDark : Colors.white;
     final cardBorder = isDark ? AppColors.borderDark : AppColors.borderLight;
 
@@ -55,28 +59,47 @@ class AboutScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: cardBorder),
                 ),
-                child: Icon(Icons.info_outline_rounded, size: 48, color: textColor),
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  size: 48,
+                  color: textColor,
+                ),
               ),
               const SizedBox(height: 20),
               Text(
                 'Hisab Kitab',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: textColor),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: textColor,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
                 'Version 1.0.0',
-                style: TextStyle(color: subtextColor, fontWeight: FontWeight.w500, fontSize: 13),
+                style: TextStyle(
+                  color: subtextColor,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
               ),
               const SizedBox(height: 24),
               Text(
                 'Hisab Kitab is your ultimate companion for managing both shared debts with friends and your personal daily spending in one integrated, easy-to-use application.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: subtextColor, height: 1.5, fontSize: 14),
+                style: TextStyle(
+                  color: subtextColor,
+                  height: 1.5,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 40),
               Text(
                 '© 2026 Hisab Kitab Team',
-                style: TextStyle(color: isDark ? AppColors.textMutedDark : AppColors.textMuted, fontSize: 12),
+                style: TextStyle(
+                  color: isDark ? AppColors.textMutedDark : AppColors.textMuted,
+                  fontSize: 12,
+                ),
               ),
             ],
           ),

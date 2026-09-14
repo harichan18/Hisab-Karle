@@ -76,9 +76,7 @@ receiptPath TEXT
       await _createMigrationMetaTable(db);
     }
     if (oldVersion < 5) {
-      await db.execute(
-        'ALTER TABLE transactions ADD COLUMN receiptPath TEXT',
-      );
+      await db.execute('ALTER TABLE transactions ADD COLUMN receiptPath TEXT');
       if (oldVersion >= 3) {
         await db.execute(
           'ALTER TABLE deleted_entries ADD COLUMN receiptPath TEXT',
@@ -410,7 +408,7 @@ nickname TEXT
     final result = await db.query('friend_nicknames');
     return {
       for (final row in result)
-        (row['friendName'] as String): (row['nickname'] as String)
+        (row['friendName'] as String): (row['nickname'] as String),
     };
   }
 
@@ -499,20 +497,16 @@ CREATE TABLE IF NOT EXISTS personal_expenses(
 
   Future<int> insertExpense(ExpenseModel expense) async {
     final db = await instance.database;
-    return await db.insert(
-      'personal_expenses',
-      {
-        'id': expense.id,
-        'userId': expense.userId,
-        'amount': expense.amount,
-        'category': expense.category,
-        'description': expense.description,
-        'expenseDate': expense.expenseDate.toIso8601String(),
-        'receiptUrl': expense.receiptUrl,
-        'createdAt': expense.createdAt.toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return await db.insert('personal_expenses', {
+      'id': expense.id,
+      'userId': expense.userId,
+      'amount': expense.amount,
+      'category': expense.category,
+      'description': expense.description,
+      'expenseDate': expense.expenseDate.toIso8601String(),
+      'receiptUrl': expense.receiptUrl,
+      'createdAt': expense.createdAt.toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<ExpenseModel>> getExpenses(String userId) async {
@@ -530,9 +524,13 @@ CREATE TABLE IF NOT EXISTS personal_expenses(
         amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
         category: json['category'] as String? ?? 'Other',
         description: json['description'] as String? ?? '',
-        expenseDate: DateTime.tryParse(json['expenseDate'] as String? ?? '') ?? DateTime.now(),
+        expenseDate:
+            DateTime.tryParse(json['expenseDate'] as String? ?? '') ??
+            DateTime.now(),
         receiptUrl: json['receiptUrl'] as String?,
-        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+        createdAt:
+            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime.now(),
       );
     }).toList();
   }

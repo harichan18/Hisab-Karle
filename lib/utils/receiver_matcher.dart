@@ -4,11 +4,7 @@
 /// NEVER creates fake friends or mutates friend data.
 library;
 
-enum MatchConfidence {
-  high,
-  medium,
-  none,
-}
+enum MatchConfidence { high, medium, none }
 
 class FriendMatchCandidate<T> {
   final T friend;
@@ -59,10 +55,7 @@ class ReceiverMatcher {
       return const [];
     }
 
-    final rTokens = normReceiver
-        .split(' ')
-        .where((t) => t.isNotEmpty)
-        .toList();
+    final rTokens = normReceiver.split(' ').where((t) => t.isNotEmpty).toList();
 
     final candidates = <FriendMatchCandidate<T>>[];
 
@@ -71,10 +64,7 @@ class ReceiverMatcher {
       final normFriend = normalize(fRawName);
       if (normFriend.isEmpty) continue;
 
-      final fTokens = normFriend
-          .split(' ')
-          .where((t) => t.isNotEmpty)
-          .toList();
+      final fTokens = normFriend.split(' ').where((t) => t.isNotEmpty).toList();
 
       double score = 0.0;
       String reason = '';
@@ -147,12 +137,14 @@ class ReceiverMatcher {
             ? MatchConfidence.high
             : MatchConfidence.medium;
 
-        candidates.add(FriendMatchCandidate(
-          friend: friend,
-          score: score,
-          confidence: confidence,
-          reason: reason,
-        ));
+        candidates.add(
+          FriendMatchCandidate(
+            friend: friend,
+            score: score,
+            confidence: confidence,
+            reason: reason,
+          ),
+        );
       }
     }
 

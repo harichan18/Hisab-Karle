@@ -17,9 +17,13 @@ class PaymentOcrService {
       // Pass 1: Try Devanagari first because it natively recognizes the Indian Rupee symbol (₹)
       // and standard Latin digits / English words.
       try {
-        textRecognizer = TextRecognizer(script: TextRecognitionScript.devanagiri);
+        textRecognizer = TextRecognizer(
+          script: TextRecognitionScript.devanagiri,
+        );
         devanagariRecognized = await textRecognizer.processImage(inputImage);
-        debugPrint('[PaymentOcrService] Devanagari OCR returned ${devanagariRecognized.text.length} chars');
+        debugPrint(
+          '[PaymentOcrService] Devanagari OCR returned ${devanagariRecognized.text.length} chars',
+        );
         if (devanagariRecognized.text.trim().isNotEmpty) {
           final lines = _extractLinesFromRecognizedText(devanagariRecognized);
           info = _parsePaymentDetails(lines, devanagariRecognized.text);
@@ -36,10 +40,15 @@ class PaymentOcrService {
         try {
           textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
           final latinRecognized = await textRecognizer.processImage(inputImage);
-          debugPrint('[PaymentOcrService] Latin OCR returned ${latinRecognized.text.length} chars');
+          debugPrint(
+            '[PaymentOcrService] Latin OCR returned ${latinRecognized.text.length} chars',
+          );
           if (latinRecognized.text.trim().isNotEmpty) {
             final latinLines = _extractLinesFromRecognizedText(latinRecognized);
-            final latinInfo = _parsePaymentDetails(latinLines, latinRecognized.text);
+            final latinInfo = _parsePaymentDetails(
+              latinLines,
+              latinRecognized.text,
+            );
             if (latinInfo.amount != null && latinInfo.amount! > 0) {
               if (info != null) {
                 // Merge amount and other detected fields
@@ -49,7 +58,8 @@ class PaymentOcrService {
                   appName: info.appName ?? latinInfo.appName,
                   receiverName: info.receiverName ?? latinInfo.receiverName,
                   upiId: info.upiId ?? latinInfo.upiId,
-                  transactionRef: info.transactionRef ?? latinInfo.transactionRef,
+                  transactionRef:
+                      info.transactionRef ?? latinInfo.transactionRef,
                   date: info.date ?? latinInfo.date,
                   dateString: info.dateString ?? latinInfo.dateString,
                 );
@@ -101,8 +111,12 @@ class PaymentOcrService {
 
   /// Parses OCR extracted lines and raw text into structured [ExtractedPaymentInfo].
   /// Exposed for testing and internal pipeline processing.
-  ExtractedPaymentInfo parseExtractedText(String rawText, {List<String>? lines}) {
-    final effectiveLines = lines ??
+  ExtractedPaymentInfo parseExtractedText(
+    String rawText, {
+    List<String>? lines,
+  }) {
+    final effectiveLines =
+        lines ??
         rawText
             .split('\n')
             .map((e) => e.trim())
@@ -116,7 +130,9 @@ class PaymentOcrService {
     String rawText,
   ) {
     // Normalize any Devanagari numerals (०-९) across all lines and raw text to standard digits (0-9)
-    final normalizedLines = lines.map((l) => AmountParser.normalizeNumerals(l)).toList();
+    final normalizedLines = lines
+        .map((l) => AmountParser.normalizeNumerals(l))
+        .toList();
     final normalizedRaw = AmountParser.normalizeNumerals(rawText);
     final lowerRaw = normalizedRaw.toLowerCase();
 
@@ -137,7 +153,10 @@ class PaymentOcrService {
     final upiId = _extractUpiId(normalizedLines, normalizedRaw);
 
     // 5. Extract UTR / Transaction Reference
-    final transactionRef = _extractTransactionRef(normalizedLines, normalizedRaw);
+    final transactionRef = _extractTransactionRef(
+      normalizedLines,
+      normalizedRaw,
+    );
 
     // 6. Extract Date
     final dateResult = _extractDate(normalizedLines, normalizedRaw);
@@ -217,7 +236,8 @@ class PaymentOcrService {
 
   (PaymentStatus, String) _detectStatus(String lowerRaw) {
     // 1. Check failure first
-    final hasFailed = lowerRaw.contains('payment failed') ||
+    final hasFailed =
+        lowerRaw.contains('payment failed') ||
         lowerRaw.contains('transaction failed') ||
         lowerRaw.contains('declined') ||
         lowerRaw.contains('failed') ||
@@ -237,7 +257,8 @@ class PaymentOcrService {
     }
 
     // 3. Check unambiguous success keywords & patterns
-    final hasSuccessPhrase = lowerRaw.contains('payment successful') ||
+    final hasSuccessPhrase =
+        lowerRaw.contains('payment successful') ||
         lowerRaw.contains('transaction successful') ||
         lowerRaw.contains('paid successfully') ||
         lowerRaw.contains('successfully paid') ||
@@ -253,7 +274,10 @@ class PaymentOcrService {
         lowerRaw.contains('paid to') ||
         lowerRaw.contains('sent to') ||
         lowerRaw.contains('debited from') ||
-        RegExp(r'\bsuccess(?:ful(?:ly)?)?\b', caseSensitive: false).hasMatch(lowerRaw);
+        RegExp(
+          r'\bsuccess(?:ful(?:ly)?)?\b',
+          caseSensitive: false,
+        ).hasMatch(lowerRaw);
 
     // Pattern for "Paid ₹X", "Paid X", "Sent ₹X", "Payment of ₹X"
     final paidAmountPattern = RegExp(
@@ -277,7 +301,10 @@ class PaymentOcrService {
     final processedLines = <String>[];
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
-      final isCurrOnly = RegExp(r'^(?:[₹\u20B9\u20A8]|rs\.?|inr|re\.?|\*)$', caseSensitive: false).hasMatch(line);
+      final isCurrOnly = RegExp(
+        r'^(?:[₹\u20B9\u20A8]|rs\.?|inr|re\.?|\*)$',
+        caseSensitive: false,
+      ).hasMatch(line);
       if (isCurrOnly && i + 1 < lines.length) {
         final nextLine = lines[i + 1].trim();
         // Allow commas in next line for Indian/international number formatting
@@ -319,7 +346,9 @@ class PaymentOcrService {
           double score = 150.0;
 
           // Has standard Indian currency indicator
-          if (line.contains('₹') || lowerLine.contains('rs') || lowerLine.contains('inr')) {
+          if (line.contains('₹') ||
+              lowerLine.contains('rs') ||
+              lowerLine.contains('inr')) {
             score += 40.0;
           }
 
@@ -342,7 +371,9 @@ class PaymentOcrService {
           // (e.g. "Received from", "Paid to", "Credited to", "Transfer Details")
           for (int offset = 1; offset <= 4; offset++) {
             if (i - offset >= 0) {
-              final prevNearby = processedLines[i - offset].toLowerCase().trim();
+              final prevNearby = processedLines[i - offset]
+                  .toLowerCase()
+                  .trim();
               if (prevNearby.contains('received from') ||
                   prevNearby.contains('received') ||
                   prevNearby.contains('credited to') ||
@@ -362,7 +393,9 @@ class PaymentOcrService {
           // Contextual boost: nearby lines below contain payment terms
           for (int offset = 1; offset <= 3; offset++) {
             if (i + offset < processedLines.length) {
-              final nextNearby = processedLines[i + offset].toLowerCase().trim();
+              final nextNearby = processedLines[i + offset]
+                  .toLowerCase()
+                  .trim();
               if (nextNearby.startsWith('paid to') ||
                   nextNearby.startsWith('sent to') ||
                   nextNearby.startsWith('to ') ||
@@ -378,19 +411,25 @@ class PaymentOcrService {
           // Contextual boost: preceded by "Payment Successful" / "Completed"
           if (i > 0) {
             final prevLower = processedLines[i - 1].toLowerCase().trim();
-            if (prevLower.contains('successful') || prevLower.contains('completed') || prevLower.contains('sent')) {
+            if (prevLower.contains('successful') ||
+                prevLower.contains('completed') ||
+                prevLower.contains('sent')) {
               score += 120.0;
             }
           }
           if (i > 1) {
             final prevPrevLower = processedLines[i - 2].toLowerCase().trim();
-            if (prevPrevLower.contains('successful') || prevPrevLower.contains('completed')) {
+            if (prevPrevLower.contains('successful') ||
+                prevPrevLower.contains('completed')) {
               score += 90.0;
             }
           }
 
           // Line is solely the amount (primary prominent amount)
-          if (RegExp(r'^[₹\u20B9\u20A8*]?\s*[0-9,]+(?:\.[0-9]{1,2})?$', caseSensitive: false).hasMatch(line.trim())) {
+          if (RegExp(
+            r'^[₹\u20B9\u20A8*]?\s*[0-9,]+(?:\.[0-9]{1,2})?$',
+            caseSensitive: false,
+          ).hasMatch(line.trim())) {
             score += 50.0;
           }
 
@@ -413,14 +452,18 @@ class PaymentOcrService {
       // Check if the entire line is a clean standalone numeric amount
       // (Even if OCR dropped the currency symbol completely, e.g. "200.00" or "98,000.00" or "12")
       final standaloneVal = AmountParser.parseAmount(line);
-      if (standaloneVal != null && standaloneVal > 0 && standaloneVal < 10000000) {
+      if (standaloneVal != null &&
+          standaloneVal > 0 &&
+          standaloneVal < 10000000) {
         if (!_isCommonNonAmountNumber(standaloneVal, line)) {
           double score = 60.0;
 
           // Nearby lines above contain payment/transfer indicators
           for (int offset = 1; offset <= 4; offset++) {
             if (i - offset >= 0) {
-              final prevNearby = processedLines[i - offset].toLowerCase().trim();
+              final prevNearby = processedLines[i - offset]
+                  .toLowerCase()
+                  .trim();
               if (prevNearby.contains('received from') ||
                   prevNearby.contains('received') ||
                   prevNearby.contains('credited to') ||
@@ -440,7 +483,9 @@ class PaymentOcrService {
           // Nearby lines below contain payment terms
           for (int offset = 1; offset <= 3; offset++) {
             if (i + offset < processedLines.length) {
-              final nextNearby = processedLines[i + offset].toLowerCase().trim();
+              final nextNearby = processedLines[i + offset]
+                  .toLowerCase()
+                  .trim();
               if (nextNearby.startsWith('paid to') ||
                   nextNearby.startsWith('sent to') ||
                   nextNearby.startsWith('to ') ||
@@ -456,19 +501,24 @@ class PaymentOcrService {
           // Preceded by success
           if (i > 0) {
             final prevLower = processedLines[i - 1].toLowerCase().trim();
-            if (prevLower.contains('successful') || prevLower.contains('completed')) {
+            if (prevLower.contains('successful') ||
+                prevLower.contains('completed')) {
               score += 120.0;
             }
           }
           if (i > 1) {
             final prevPrevLower = processedLines[i - 2].toLowerCase().trim();
-            if (prevPrevLower.contains('successful') || prevPrevLower.contains('completed')) {
+            if (prevPrevLower.contains('successful') ||
+                prevPrevLower.contains('completed')) {
               score += 90.0;
             }
           }
 
           // Clean standalone line
-          if (RegExp(r'^[₹\u20B9\u20A8*]?\s*[0-9,]+(?:\.[0-9]{1,2})?$', caseSensitive: false).hasMatch(line.trim())) {
+          if (RegExp(
+            r'^[₹\u20B9\u20A8*]?\s*[0-9,]+(?:\.[0-9]{1,2})?$',
+            caseSensitive: false,
+          ).hasMatch(line.trim())) {
             score += 50.0;
           }
 
@@ -484,7 +534,9 @@ class PaymentOcrService {
           }
 
           if (score >= 80.0) {
-            candidates.add(_AmountCandidate(amount: standaloneVal, score: score));
+            candidates.add(
+              _AmountCandidate(amount: standaloneVal, score: score),
+            );
           }
         }
       }
@@ -497,7 +549,10 @@ class PaymentOcrService {
       for (final em in embeddedMatches) {
         final rawNum = em.group(1);
         final emVal = AmountParser.parseAmount(rawNum);
-        if (emVal != null && emVal > 0 && emVal < 10000000 && !_isCommonNonAmountNumber(emVal, line)) {
+        if (emVal != null &&
+            emVal > 0 &&
+            emVal < 10000000 &&
+            !_isCommonNonAmountNumber(emVal, line)) {
           // Reject if this specific number is part of a masked account or UPI ID
           final matchStart = em.start;
           final matchEnd = em.end;
@@ -522,7 +577,9 @@ class PaymentOcrService {
             }
             if (i + offset < processedLines.length) {
               final next = processedLines[i + offset].toLowerCase();
-              if (next.contains('banking name') || next.contains('credited') || next.contains('paid to')) {
+              if (next.contains('banking name') ||
+                  next.contains('credited') ||
+                  next.contains('paid to')) {
                 score += (140.0 - (offset * 15.0));
                 hasPaymentContext = true;
                 break;
@@ -560,7 +617,8 @@ class PaymentOcrService {
       // boost its score (+40 per additional occurrence)
       for (final entry in countMap.entries) {
         if (entry.value > 1) {
-          scoreMap[entry.key] = (scoreMap[entry.key] ?? 0) + ((entry.value - 1) * 40.0);
+          scoreMap[entry.key] =
+              (scoreMap[entry.key] ?? 0) + ((entry.value - 1) * 40.0);
         }
       }
 
@@ -568,7 +626,9 @@ class PaymentOcrService {
         ..sort((a, b) => b.value.compareTo(a.value));
 
       final best = sorted.first;
-      debugPrint('[PaymentOcrService] Detected best amount: ₹${best.key} with score ${best.value}');
+      debugPrint(
+        '[PaymentOcrService] Detected best amount: ₹${best.key} with score ${best.value}',
+      );
       return (best.key, (best.value / 200.0).clamp(0.0, 1.0));
     }
 
@@ -577,7 +637,11 @@ class PaymentOcrService {
 
   bool _isNonAmountLine(String line) {
     final lower = line.toLowerCase();
-    final hasExplicitCurrency = line.contains('₹') || lower.contains('rs.') || lower.contains('rs ') || lower.contains('inr');
+    final hasExplicitCurrency =
+        line.contains('₹') ||
+        lower.contains('rs.') ||
+        lower.contains('rs ') ||
+        lower.contains('inr');
 
     // 1. Promotional, ads, reward and cashback banners (e.g. "Get up to 1,000 on every payment 1 = 1 paisa")
     if (lower.contains('get up to') ||
@@ -620,16 +684,23 @@ class PaymentOcrService {
     // 4. Masked bank account lines or UPI handle lines WITHOUT trailing numbers or currency
     // e.g. "WL0502560A0030816@unionbank", "XXXXXX5649@sic"
     // BUT if the line has a trailing amount like "UPI • XXXXXX5649@sic 12", do not reject the line!
-    if ((lower.contains('@') || RegExp(r'[xX*•]{2,}').hasMatch(line)) && !hasExplicitCurrency) {
-      final hasTrailingNumber = RegExp(r'\s+([0-9]+(?:\.[0-9]{1,2})?)\s*$').hasMatch(line);
+    if ((lower.contains('@') || RegExp(r'[xX*•]{2,}').hasMatch(line)) &&
+        !hasExplicitCurrency) {
+      final hasTrailingNumber = RegExp(
+        r'\s+([0-9]+(?:\.[0-9]{1,2})?)\s*$',
+      ).hasMatch(line);
       if (!hasTrailingNumber) {
         return true;
       }
     }
 
     // 5. Phone numbers: safely check for phone labels WITHOUT matching 'phonepe'
-    final cleanForPhone = lower.replaceAll('phonepe', '').replaceAll('phone pe', '');
-    if (RegExp(r'\b(?:phone|mob|contact)\s*(?:no|number|#)?\s*[:\-]').hasMatch(cleanForPhone)) {
+    final cleanForPhone = lower
+        .replaceAll('phonepe', '')
+        .replaceAll('phone pe', '');
+    if (RegExp(
+      r'\b(?:phone|mob|contact)\s*(?:no|number|#)?\s*[:\-]',
+    ).hasMatch(cleanForPhone)) {
       if (!hasExplicitCurrency) return true;
     }
 
@@ -653,8 +724,12 @@ class PaymentOcrService {
 
     // 8. Filter date and timestamp lines unless they contain explicit currency symbols
     // e.g. "09:16 pm on 11 Sept 2026", "28 August 2026, 3:12 am"
-    final hasTimeOrDate = (lower.contains('am') || lower.contains('pm') || lower.contains(':')) &&
-        (RegExp(r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b', caseSensitive: false).hasMatch(lower) ||
+    final hasTimeOrDate =
+        (lower.contains('am') || lower.contains('pm') || lower.contains(':')) &&
+        (RegExp(
+              r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b',
+              caseSensitive: false,
+            ).hasMatch(lower) ||
             RegExp(r'\b20[2-3][0-9]\b').hasMatch(lower));
     if (hasTimeOrDate && !hasExplicitCurrency) {
       return true;
@@ -685,41 +760,66 @@ class PaymentOcrService {
     }
 
     // 3. Phone number (10 digits starting with 6-9, e.g. 9876543210 or +91...)
-    if (digitsOnly.length == 10 && RegExp(r'^[6-9]').hasMatch(digitsOnly) && valIntStr == digitsOnly) {
+    if (digitsOnly.length == 10 &&
+        RegExp(r'^[6-9]').hasMatch(digitsOnly) &&
+        valIntStr == digitsOnly) {
       return true;
     }
-    if (digitsOnly.length == 12 && line.startsWith('+91') && valIntStr == digitsOnly.substring(2)) {
+    if (digitsOnly.length == 12 &&
+        line.startsWith('+91') &&
+        valIntStr == digitsOnly.substring(2)) {
       return true;
     }
     // Entire line is a phone number
     if ((digitsOnly.length == 10 || digitsOnly.length == 12) &&
         (line.startsWith('+') || RegExp(r'^[6-9]').hasMatch(digitsOnly)) &&
-        !line.contains('₹') && !lower.contains('rs')) {
+        !line.contains('₹') &&
+        !lower.contains('rs')) {
       if (val >= 6000000000) {
         return true;
       }
     }
 
     // 4. UTR / Txn Reference (standalone 12-digit number without decimals)
-    if (digitsOnly.length == 12 && !line.contains('.') && !line.contains('₹') && val >= 100000000000) {
+    if (digitsOnly.length == 12 &&
+        !line.contains('.') &&
+        !line.contains('₹') &&
+        val >= 100000000000) {
       return true;
     }
 
     // 5. Year (2020-2035) on a date line without currency
-    if (digitsOnly.length == 4 && val >= 2020 && val <= 2035 && !line.contains('₹') && !lower.contains('rs')) {
+    if (digitsOnly.length == 4 &&
+        val >= 2020 &&
+        val <= 2035 &&
+        !line.contains('₹') &&
+        !lower.contains('rs')) {
       return true;
     }
 
     // 6. Timestamp line (e.g. "09:16 pm on 11 Sept 2026")
-    final isTimestampLine = RegExp(r'\b[012]?[0-9]:[0-5][0-9]\s*(?:am|pm)?\b', caseSensitive: false).hasMatch(lower) ||
+    final isTimestampLine =
+        RegExp(
+          r'\b[012]?[0-9]:[0-5][0-9]\s*(?:am|pm)?\b',
+          caseSensitive: false,
+        ).hasMatch(lower) ||
         RegExp(r'\b(?:am|pm)\b', caseSensitive: false).hasMatch(lower);
-    if (isTimestampLine && !line.contains('₹') && !lower.contains('rs') && !lower.contains('inr')) {
+    if (isTimestampLine &&
+        !line.contains('₹') &&
+        !lower.contains('rs') &&
+        !lower.contains('inr')) {
       return true;
     }
 
     // 7. Date month names on lines without currency
-    final hasMonthName = RegExp(r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b', caseSensitive: false).hasMatch(lower);
-    if (hasMonthName && !line.contains('₹') && !lower.contains('rs') && !lower.contains('inr')) {
+    final hasMonthName = RegExp(
+      r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b',
+      caseSensitive: false,
+    ).hasMatch(lower);
+    if (hasMonthName &&
+        !line.contains('₹') &&
+        !lower.contains('rs') &&
+        !lower.contains('inr')) {
       return true;
     }
 
@@ -737,7 +837,9 @@ class PaymentOcrService {
       if (match != null) {
         final matched = match.group(0);
         // Exclude common domain emails if needed, but in UPI it's mostly @ok..., @ibl, @ybl, @axl, @paytm, etc.
-        if (matched != null && !matched.endsWith('.com') && !matched.endsWith('.in')) {
+        if (matched != null &&
+            !matched.endsWith('.com') &&
+            !matched.endsWith('.in')) {
           return matched;
         }
       }
@@ -746,7 +848,9 @@ class PaymentOcrService {
     final globalMatch = upiRegex.firstMatch(rawText);
     if (globalMatch != null) {
       final matched = globalMatch.group(0);
-      if (matched != null && !matched.endsWith('.com') && !matched.endsWith('.in')) {
+      if (matched != null &&
+          !matched.endsWith('.com') &&
+          !matched.endsWith('.in')) {
         return matched;
       }
     }
@@ -813,7 +917,10 @@ class PaymentOcrService {
         final month = _monthNumber(monthName);
         try {
           final dt = DateTime(year, month, day);
-          return (dt, '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}');
+          return (
+            dt,
+            '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}',
+          );
         } catch (_) {}
       }
 
@@ -827,13 +934,17 @@ class PaymentOcrService {
         final month = p2 <= 12 ? p2 : 1;
         try {
           final dt = DateTime(year, month, day);
-          return (dt, '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}');
+          return (
+            dt,
+            '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}',
+          );
         } catch (_) {}
       }
     }
 
     // Default to today
-    final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     return (now, todayStr);
   }
 
@@ -895,8 +1006,8 @@ class PaymentOcrService {
         final prefix = lower.startsWith('received from ')
             ? 'received from '
             : lower.startsWith('to ')
-                ? 'to '
-                : 'to ';
+            ? 'to '
+            : 'to ';
         final startIdx = lower.indexOf(prefix) + prefix.length;
         final candidate = line.substring(startIdx).trim();
         if (!_isNonNameLine(candidate)) {
@@ -911,10 +1022,22 @@ class PaymentOcrService {
   bool _isNonNameLine(String str) {
     final lower = str.toLowerCase();
     if (str.isEmpty) return true;
-    if (str.contains('₹') || lower.contains('rs.') || lower.contains('inr')) return true;
-    if (lower.contains('successful') || lower.contains('completed') || lower.contains('failed')) return true;
-    if (lower.contains('transfer details') || lower.contains('transaction id') || lower.contains('credited to')) return true;
-    if (lower.contains('upi') || lower.contains('utr') || lower.contains('@')) return true;
+    if (str.contains('₹') || lower.contains('rs.') || lower.contains('inr')) {
+      return true;
+    }
+    if (lower.contains('successful') ||
+        lower.contains('completed') ||
+        lower.contains('failed')) {
+      return true;
+    }
+    if (lower.contains('transfer details') ||
+        lower.contains('transaction id') ||
+        lower.contains('credited to')) {
+      return true;
+    }
+    if (lower.contains('upi') || lower.contains('utr') || lower.contains('@')) {
+      return true;
+    }
     // Phone numbers like +917499752312
     final digitsOnly = str.replaceAll(RegExp(r'[^0-9]'), '');
     if (digitsOnly.length >= 10 && str.startsWith('+')) return true;

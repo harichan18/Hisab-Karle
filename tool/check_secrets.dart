@@ -6,7 +6,9 @@ import 'dart:io';
 
 void main(List<String> args) {
   final checkAll = args.contains('--all');
-  stdout.writeln('🔒 Running Hisab Kitab secret scanner (${checkAll ? "all files" : "staged files"})...');
+  stdout.writeln(
+    '🔒 Running Hisab Kitab secret scanner (${checkAll ? "all files" : "staged files"})...',
+  );
 
   final filesToCheck = checkAll ? _getAllFiles() : _getStagedFiles();
 
@@ -44,8 +46,12 @@ void main(List<String> args) {
   }
 
   if (foundSecrets > 0) {
-    stderr.writeln('\n🚨 Secret scanner failed: $foundSecrets potential secret(s) found!');
-    stderr.writeln('Please remove secrets before committing. Redact secrets or use secure configuration.');
+    stderr.writeln(
+      '\n🚨 Secret scanner failed: $foundSecrets potential secret(s) found!',
+    );
+    stderr.writeln(
+      'Please remove secrets before committing. Redact secrets or use secure configuration.',
+    );
     exit(1);
   } else {
     stdout.writeln('✅ Secret scan clean! No exposed secrets detected.');
@@ -55,7 +61,12 @@ void main(List<String> args) {
 
 List<String> _getStagedFiles() {
   try {
-    final res = Process.runSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM']);
+    final res = Process.runSync('git', [
+      'diff',
+      '--cached',
+      '--name-only',
+      '--diff-filter=ACM',
+    ]);
     if (res.exitCode != 0) return _getAllFiles();
     final out = (res.stdout as String).trim();
     if (out.isEmpty) return [];
@@ -70,7 +81,9 @@ List<String> _getAllFiles() {
   final root = Directory.current;
   for (final entity in root.listSync(recursive: true, followLinks: false)) {
     if (entity is File) {
-      final relative = entity.path.replaceAll(root.path, '').replaceAll(RegExp(r'^[\\/]'), '');
+      final relative = entity.path
+          .replaceAll(root.path, '')
+          .replaceAll(RegExp(r'^[\\/]'), '');
       files.add(relative);
     }
   }
@@ -93,10 +106,20 @@ bool _isIgnoredPath(String path) {
 
 bool _isSensitiveFilename(String path) {
   final name = path.split(RegExp(r'[\\/]')).last;
-  if (name == '.env' || (name.startsWith('.env.') && !name.endsWith('.example'))) return true;
+  if (name == '.env' ||
+      (name.startsWith('.env.') && !name.endsWith('.example'))) {
+    return true;
+  }
   if (name.startsWith('service-account') && name.endsWith('.json')) return true;
-  if (name == 'credentials.json' || name == 'secrets.json' || name == 'google-services-private.json') return true;
-  if (name.endsWith('.jks') || (name.endsWith('.keystore') && !name.contains('debug'))) return true;
+  if (name == 'credentials.json' ||
+      name == 'secrets.json' ||
+      name == 'google-services-private.json') {
+    return true;
+  }
+  if (name.endsWith('.jks') ||
+      (name.endsWith('.keystore') && !name.contains('debug'))) {
+    return true;
+  }
   return false;
 }
 
@@ -113,12 +136,16 @@ List<String> _scanContent(String path, String content) {
   }
 
   // Google Service Account JSON
-  if (content.contains('"type": "service_account"') && content.contains('"private_key":')) {
+  if (content.contains('"type": "service_account"') &&
+      content.contains('"private_key":')) {
     violations.add('Google Service Account private key JSON detected');
   }
 
   // Cloudinary API secret pattern
-  if (RegExp(r'cloudinary.*api_secret\s*[:=]\s*["\x27][a-zA-Z0-9_-]{10,}["\x27]', caseSensitive: false).hasMatch(content)) {
+  if (RegExp(
+    r'cloudinary.*api_secret\s*[:=]\s*["\x27][a-zA-Z0-9_-]{10,}["\x27]',
+    caseSensitive: false,
+  ).hasMatch(content)) {
     violations.add('Cloudinary API secret detected');
   }
 
@@ -128,7 +155,9 @@ List<String> _scanContent(String path, String content) {
   }
 
   // GitHub Personal Access Token
-  if (RegExp(r'gh[pousr]_[A-Za-z0-9_]{36}|github_pat_[A-Za-z0-9_]{82}').hasMatch(content)) {
+  if (RegExp(
+    r'gh[pousr]_[A-Za-z0-9_]{36}|github_pat_[A-Za-z0-9_]{82}',
+  ).hasMatch(content)) {
     violations.add('GitHub Token detected');
   }
 
@@ -137,7 +166,10 @@ List<String> _scanContent(String path, String content) {
   if (!normalizedPath.contains('firebase_options.dart') &&
       !normalizedPath.contains('google-services.json') &&
       !normalizedPath.contains('check_secrets.dart')) {
-    if (RegExp(r'(?:secret|password|api_key|token)\s*[:=]\s*["\x27][a-zA-Z0-9_-]{20,}["\x27]', caseSensitive: false).hasMatch(content)) {
+    if (RegExp(
+      r'(?:secret|password|api_key|token)\s*[:=]\s*["\x27][a-zA-Z0-9_-]{20,}["\x27]',
+      caseSensitive: false,
+    ).hasMatch(content)) {
       violations.add('Suspicious hardcoded credential found');
     }
   }

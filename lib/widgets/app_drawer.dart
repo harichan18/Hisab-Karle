@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../main.dart'; // For CustomCachedImage, HomePage, ProfilePage etc.
+import '../screens/auth/profile_page.dart';
+import '../screens/home/home_page.dart';
+import 'image/custom_cached_image.dart';
 import '../screens/daily_expenditure_screen.dart';
 import '../screens/deleted_transactions_screen.dart';
 import '../screens/reports_screen.dart';
@@ -19,10 +21,16 @@ class AppDrawer extends StatelessWidget {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
-    final subtextColor = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final textColor = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+    final subtextColor = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondary;
     final borderCol = isDark ? AppColors.borderDark : AppColors.borderLight;
-    final variantBg = isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariant;
+    final variantBg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariant;
     final dividerCol = isDark ? AppColors.dividerDark : AppColors.divider;
 
     return Drawer(
@@ -44,10 +52,21 @@ class AppDrawer extends StatelessWidget {
                           .doc(currentUser.uid)
                           .snapshots(),
                       builder: (context, snapshot) {
-                        final data = snapshot.hasData ? snapshot.data!.data() : null;
-                        final photoUrl = data?['photoUrl'] as String? ?? currentUser.photoURL ?? '';
-                        final name = data?['name'] as String? ?? currentUser.displayName ?? 'Hisab Kitab User';
-                        final email = data?['email'] as String? ?? currentUser.email ?? 'Offline / Local Mode';
+                        final data = snapshot.hasData
+                            ? snapshot.data!.data()
+                            : null;
+                        final photoUrl =
+                            data?['photoUrl'] as String? ??
+                            currentUser.photoURL ??
+                            '';
+                        final name =
+                            data?['name'] as String? ??
+                            currentUser.displayName ??
+                            'Hisab Kitab User';
+                        final email =
+                            data?['email'] as String? ??
+                            currentUser.email ??
+                            'Offline / Local Mode';
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -57,7 +76,9 @@ class AppDrawer extends StatelessWidget {
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                                    color: Colors.black.withValues(
+                                      alpha: isDark ? 0.3 : 0.08,
+                                    ),
                                     blurRadius: 10,
                                     offset: const Offset(0, 3),
                                   ),
@@ -108,12 +129,17 @@ class AppDrawer extends StatelessWidget {
                                 Navigator.pop(context);
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => const ProfilePage()),
+                                  MaterialPageRoute(
+                                    builder: (_) => const ProfilePage(),
+                                  ),
                                 );
                               },
                               borderRadius: BorderRadius.circular(20),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 7,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.transparent,
                                   border: Border.all(
@@ -206,7 +232,9 @@ class AppDrawer extends StatelessWidget {
                       } else {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const DailyExpenditureScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const DailyExpenditureScreen(),
+                          ),
                         );
                       }
                     },
@@ -222,7 +250,9 @@ class AppDrawer extends StatelessWidget {
                       } else {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const ReportsScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const ReportsScreen(),
+                          ),
                         );
                       }
                     },
@@ -238,7 +268,9 @@ class AppDrawer extends StatelessWidget {
                       } else {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const DeletedTransactionsScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const DeletedTransactionsScreen(),
+                          ),
                         );
                       }
                     },
@@ -258,7 +290,9 @@ class AppDrawer extends StatelessWidget {
                       } else {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
+                          ),
                         );
                       }
                     },
@@ -274,7 +308,9 @@ class AppDrawer extends StatelessWidget {
                       } else {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const AboutScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const AboutScreen(),
+                          ),
                         );
                       }
                     },
@@ -303,7 +339,9 @@ class AppDrawer extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.2 : 0.04,
+                            ),
                             blurRadius: 6,
                           ),
                         ],
@@ -330,10 +368,7 @@ class AppDrawer extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             "Smart insights for better money habits.",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: subtextColor,
-                            ),
+                            style: TextStyle(fontSize: 11, color: subtextColor),
                           ),
                         ],
                       ),
@@ -357,9 +392,15 @@ class AppDrawer extends StatelessWidget {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isSelected = currentRoute == route;
-    final activeBg = isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariant;
-    final activeText = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
-    final inactiveText = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final activeBg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariant;
+    final activeText = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+    final inactiveText = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
@@ -368,9 +409,7 @@ class AppDrawer extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: ListTile(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         leading: Icon(

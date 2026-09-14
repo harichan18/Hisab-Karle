@@ -9,7 +9,9 @@ class ShareReceiverService {
 
   static final ShareReceiverService instance = ShareReceiverService._();
 
-  static const MethodChannel _channel = MethodChannel('hisab_kitab/share_receiver');
+  static const MethodChannel _channel = MethodChannel(
+    'hisab_kitab/share_receiver',
+  );
 
   final StreamController<String> _sharedImageController =
       StreamController<String>.broadcast();
@@ -34,13 +36,17 @@ class ShareReceiverService {
   /// Checks for any shared image that triggered app launch (cold-start).
   Future<String?> checkInitialSharedImage() async {
     try {
-      final initialPath = await _channel.invokeMethod<String>('getInitialSharedImage');
+      final initialPath = await _channel.invokeMethod<String>(
+        'getInitialSharedImage',
+      );
       if (initialPath != null && initialPath.isNotEmpty) {
         _dispatchSharedImage(initialPath);
         return initialPath;
       }
     } catch (e) {
-      debugPrint('[ShareReceiverService] Error checking initial shared image: $e');
+      debugPrint(
+        '[ShareReceiverService] Error checking initial shared image: $e',
+      );
     }
     return null;
   }
@@ -51,7 +57,9 @@ class ShareReceiverService {
     if (_lastHandledPath == path &&
         _lastHandledTime != null &&
         now.difference(_lastHandledTime!) < const Duration(seconds: 3)) {
-      debugPrint('[ShareReceiverService] Skipping duplicate share event for: $path');
+      debugPrint(
+        '[ShareReceiverService] Skipping duplicate share event for: $path',
+      );
       return;
     }
 

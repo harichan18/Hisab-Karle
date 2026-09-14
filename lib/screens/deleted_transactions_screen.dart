@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../main.dart'; // For FirebaseDataService, CustomCachedImage, etc.
+import '../services/transaction_service.dart';
 import '../database/database_helper.dart';
 import '../models/transaction_model.dart';
 import '../theme/app_theme.dart';
@@ -9,7 +9,8 @@ class DeletedTransactionsScreen extends StatefulWidget {
   const DeletedTransactionsScreen({super.key});
 
   @override
-  State<DeletedTransactionsScreen> createState() => _DeletedTransactionsScreenState();
+  State<DeletedTransactionsScreen> createState() =>
+      _DeletedTransactionsScreenState();
 }
 
 class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
@@ -50,7 +51,10 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
     }
   }
 
-  void _showDeletedTransactionOptions(BuildContext context, DeletedEntryModel entry) {
+  void _showDeletedTransactionOptions(
+    BuildContext context,
+    DeletedEntryModel entry,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
@@ -70,7 +74,9 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
                   height: 4,
                   margin: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                    color: isDark
+                        ? AppColors.borderDark
+                        : AppColors.borderLight,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -81,12 +87,18 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
                       color: AppColors.collectBg,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.restore_rounded, color: AppColors.collectText, size: 20),
+                    child: const Icon(
+                      Icons.restore_rounded,
+                      color: AppColors.collectText,
+                      size: 20,
+                    ),
                   ),
                   title: Text(
                     "Restore Transaction",
                     style: TextStyle(
-                      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                      color: isDark
+                          ? AppColors.textPrimaryDark
+                          : AppColors.textPrimary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -98,20 +110,29 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
                         await FirebaseDataService.restoreDeletedEntry(entry);
                       }
                       if (entry.id != null) {
-                        await DatabaseHelper.instance.restoreDeletedEntry(entry.id!);
+                        await DatabaseHelper.instance.restoreDeletedEntry(
+                          entry.id!,
+                        );
                       }
                       if (FirebaseAuth.instance.currentUser == null) {
                         await loadDeletedTransactions();
                       }
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Transaction restored successfully.')),
+                          const SnackBar(
+                            content: Text('Transaction restored successfully.'),
+                          ),
                         );
                       }
                     } catch (e) {
+                      debugPrint('[DeletedTransactions] Restore failed: $e');
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to restore transaction: $e')),
+                          const SnackBar(
+                            content: Text(
+                              'Failed to restore transaction. Please try again.',
+                            ),
+                          ),
                         );
                       }
                     } finally {
@@ -126,11 +147,18 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
                       color: AppColors.payBg,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.delete_forever_rounded, color: AppColors.payText, size: 20),
+                    child: const Icon(
+                      Icons.delete_forever_rounded,
+                      color: AppColors.payText,
+                      size: 20,
+                    ),
                   ),
                   title: const Text(
                     "Permanently Delete",
-                    style: TextStyle(color: AppColors.payText, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: AppColors.payText,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   onTap: () async {
                     Navigator.pop(context);
@@ -138,15 +166,21 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
                       context: context,
                       builder: (dialogContext) => AlertDialog(
                         title: const Text('Permanently Delete?'),
-                        content: const Text('This action is irreversible. The transaction will be permanently deleted.'),
+                        content: const Text(
+                          'This action is irreversible. The transaction will be permanently deleted.',
+                        ),
                         actions: [
                           TextButton(
-                            onPressed: () => Navigator.pop(dialogContext, false),
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
                             child: const Text('Cancel'),
                           ),
                           TextButton(
                             onPressed: () => Navigator.pop(dialogContext, true),
-                            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.red),
+                            ),
                           ),
                         ],
                       ),
@@ -160,20 +194,31 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
                         await FirebaseDataService.permanentlyDeleteEntry(entry);
                       }
                       if (entry.id != null) {
-                        await DatabaseHelper.instance.permanentlyDeleteEntry(entry.id!);
+                        await DatabaseHelper.instance.permanentlyDeleteEntry(
+                          entry.id!,
+                        );
                       }
                       if (FirebaseAuth.instance.currentUser == null) {
                         await loadDeletedTransactions();
                       }
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Transaction permanently deleted.')),
+                          const SnackBar(
+                            content: Text('Transaction permanently deleted.'),
+                          ),
                         );
                       }
                     } catch (e) {
+                      debugPrint(
+                        '[DeletedTransactions] Permanent delete failed: $e',
+                      );
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to delete transaction: $e')),
+                          const SnackBar(
+                            content: Text(
+                              'Failed to delete transaction. Please try again.',
+                            ),
+                          ),
                         );
                       }
                     } finally {
@@ -198,10 +243,25 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
     var suffix = match.group(4)!.trim();
     final monthVal = int.tryParse(monthStr);
     if (monthVal == null || monthVal < 1 || monthVal > 12) return rawDate;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     final formattedDate = "$dayStr ${months[monthVal - 1]}";
     if (suffix.isNotEmpty) {
-      while (suffix.startsWith('-') || suffix.startsWith(':') || suffix.startsWith(' ')) {
+      while (suffix.startsWith('-') ||
+          suffix.startsWith(':') ||
+          suffix.startsWith(' ')) {
         suffix = suffix.substring(1).trim();
       }
       return "$formattedDate ($suffix)";
@@ -212,8 +272,12 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
-    final subtextColor = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final textColor = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+    final subtextColor = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondary;
     final mutedColor = isDark ? AppColors.textMutedDark : AppColors.textMuted;
     final cardBg = isDark ? AppColors.surfaceDark : Colors.white;
     final cardBorder = isDark ? AppColors.borderDark : AppColors.borderLight;
@@ -242,113 +306,130 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : deletedTransactions.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: cardBg,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: cardBorder),
-                          ),
-                          child: Icon(Icons.delete_sweep_rounded, size: 48, color: mutedColor),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: cardBorder),
+                      ),
+                      child: Icon(
+                        Icons.delete_sweep_rounded,
+                        size: 48,
+                        color: mutedColor,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No deleted transactions found.',
+                      style: TextStyle(
+                        color: subtextColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: deletedTransactions.length,
+              itemBuilder: (context, index) {
+                final entry = deletedTransactions[index];
+                final moneyColor = entry.isGiven
+                    ? AppColors.collectText
+                    : AppColors.payText;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: cardBorder, width: 0.8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.2 : 0.02,
                         ),
-                        const SizedBox(height: 16),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    onLongPress: () =>
+                        _showDeletedTransactionOptions(context, entry),
+                    title: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.friendName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: textColor,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                         Text(
-                          'No deleted transactions found.',
-                          style: TextStyle(color: subtextColor, fontSize: 15, fontWeight: FontWeight.w500),
+                          "\u20B9${entry.amount.toStringAsFixed(0)}",
+                          style: TextStyle(
+                            color: moneyColor,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  itemCount: deletedTransactions.length,
-                  itemBuilder: (context, index) {
-                    final entry = deletedTransactions[index];
-                    final moneyColor = entry.isGiven ? AppColors.collectText : AppColors.payText;
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: cardBg,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: cardBorder, width: 0.8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (entry.note.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            entry.note,
+                            style: TextStyle(color: subtextColor, fontSize: 13),
                           ),
                         ],
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        onLongPress: () => _showDeletedTransactionOptions(context, entry),
-                        title: Row(
+                        const SizedBox(height: 8),
+                        Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(
-                              child: Text(
-                                entry.friendName,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
-                                  color: textColor,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                            Text(
+                              "Tx Date: ${_formatDate(entry.date)}",
+                              style: TextStyle(fontSize: 11, color: mutedColor),
                             ),
                             Text(
-                              "\u20B9${entry.amount.toStringAsFixed(0)}",
-                              style: TextStyle(
-                                color: moneyColor,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                              ),
+                              "Cleared: ${_formatDate(entry.clearedDate)}",
+                              style: TextStyle(fontSize: 11, color: mutedColor),
                             ),
                           ],
                         ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (entry.note.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                entry.note,
-                                style: TextStyle(color: subtextColor, fontSize: 13),
-                              ),
-                            ],
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  "Tx Date: ${_formatDate(entry.date)}",
-                                  style: TextStyle(fontSize: 11, color: mutedColor),
-                                ),
-                                Text(
-                                  "Cleared: ${_formatDate(entry.clearedDate)}",
-                                  style: TextStyle(fontSize: 11, color: mutedColor),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: Icon(Icons.more_vert, color: subtextColor),
-                          onPressed: () => _showDeletedTransactionOptions(context, entry),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                      ],
+                    ),
+                    trailing: IconButton(
+                      icon: Icon(Icons.more_vert, color: subtextColor),
+                      onPressed: () =>
+                          _showDeletedTransactionOptions(context, entry),
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

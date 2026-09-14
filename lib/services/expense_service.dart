@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../models/expense_model.dart';
 import '../database/database_helper.dart';
 
@@ -15,7 +16,9 @@ class ExpenseService {
     final docId = _firestoreRef.doc().id;
     final updatedExpense = expense.copyWith(
       id: expense.id ?? docId,
-      userId: expense.userId.isNotEmpty ? expense.userId : (uid ?? 'offline_user'),
+      userId: expense.userId.isNotEmpty
+          ? expense.userId
+          : (uid ?? 'offline_user'),
     );
 
     // Save locally
@@ -23,7 +26,9 @@ class ExpenseService {
 
     // Save to Firestore if online
     if (uid != null) {
-      await _firestoreRef.doc(updatedExpense.id).set(updatedExpense.toFirestoreMap());
+      await _firestoreRef
+          .doc(updatedExpense.id)
+          .set(updatedExpense.toFirestoreMap());
     }
   }
 
@@ -32,7 +37,9 @@ class ExpenseService {
     final uid = _currentUserId;
     if (uid != null) {
       try {
-        final snapshot = await _firestoreRef.where('userId', isEqualTo: userId).get();
+        final snapshot = await _firestoreRef
+            .where('userId', isEqualTo: userId)
+            .get();
         final list = snapshot.docs
             .map((doc) => ExpenseModel.fromFirestore(doc.id, doc.data()))
             .toList();
@@ -43,7 +50,9 @@ class ExpenseService {
         list.sort((a, b) => b.expenseDate.compareTo(a.expenseDate));
         return list;
       } catch (e) {
-        // Fallback to local
+        debugPrint(
+          '[ExpenseService] Remote fetch failed, falling back to local cache: $e',
+        );
         return await DatabaseHelper.instance.getExpenses(userId);
       }
     } else {
@@ -55,10 +64,9 @@ class ExpenseService {
   static Stream<List<ExpenseModel>> expensesStream(String userId) {
     final uid = _currentUserId;
     if (uid != null) {
-      return _firestoreRef
-          .where('userId', isEqualTo: userId)
-          .snapshots()
-          .map((snapshot) {
+      return _firestoreRef.where('userId', isEqualTo: userId).snapshots().map((
+        snapshot,
+      ) {
         final list = snapshot.docs
             .map((doc) => ExpenseModel.fromFirestore(doc.id, doc.data()))
             .toList();
@@ -78,7 +86,7 @@ class ExpenseService {
   // Update
   static Future<void> updateExpense(ExpenseModel expense) async {
     final uid = _currentUserId;
-    
+
     // Update locally
     await DatabaseHelper.instance.updateExpense(expense);
 

@@ -37,13 +37,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final now = DateTime.now();
     if (_selectedPeriod == 'This Month') {
       return _expenses
-          .where((e) => e.expenseDate.year == now.year && e.expenseDate.month == now.month)
+          .where(
+            (e) =>
+                e.expenseDate.year == now.year &&
+                e.expenseDate.month == now.month,
+          )
           .fold(0.0, (sum, e) => sum + e.amount);
     } else if (_selectedPeriod == 'This Week') {
       final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-      final startOfDay = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+      final startOfDay = DateTime(
+        startOfWeek.year,
+        startOfWeek.month,
+        startOfWeek.day,
+      );
       return _expenses
-          .where((e) => e.expenseDate.isAfter(startOfDay) || e.expenseDate.isAtSameMomentAs(startOfDay))
+          .where(
+            (e) =>
+                e.expenseDate.isAfter(startOfDay) ||
+                e.expenseDate.isAtSameMomentAs(startOfDay),
+          )
           .fold(0.0, (sum, e) => sum + e.amount);
     } else {
       return _expenses.fold(0.0, (sum, e) => sum + e.amount);
@@ -60,7 +72,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final now = DateTime.now();
     final filtered = _expenses.where((e) {
       if (_selectedPeriod == 'This Month') {
-        return e.expenseDate.year == now.year && e.expenseDate.month == now.month;
+        return e.expenseDate.year == now.year &&
+            e.expenseDate.month == now.month;
       }
       return true;
     });
@@ -122,17 +135,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   icon: Icon(
                     Icons.keyboard_arrow_down_rounded,
                     size: 18,
-                    color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                    color: isDark
+                        ? AppColors.textPrimaryDark
+                        : AppColors.textPrimary,
                   ),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                    color: isDark
+                        ? AppColors.textPrimaryDark
+                        : AppColors.textPrimary,
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'This Month', child: Text('This Month')),
-                    DropdownMenuItem(value: 'This Week', child: Text('This Week')),
-                    DropdownMenuItem(value: 'All Time', child: Text('All Time')),
+                    DropdownMenuItem(
+                      value: 'This Month',
+                      child: Text('This Month'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'This Week',
+                      child: Text('This Week'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'All Time',
+                      child: Text('All Time'),
+                    ),
                   ],
                   onChanged: (val) {
                     if (val != null) setState(() => _selectedPeriod = val);
@@ -157,12 +183,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       color: isDark ? AppColors.surfaceDark : Colors.white,
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                        color: isDark
+                            ? AppColors.borderDark
+                            : AppColors.borderLight,
                         width: 0.8,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.2 : 0.02,
+                          ),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -179,13 +209,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariant,
+                                    color: isDark
+                                        ? AppColors.surfaceVariantDark
+                                        : AppColors.surfaceVariant,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Icon(
                                     Icons.account_balance_wallet_outlined,
                                     size: 16,
-                                    color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                                    color: isDark
+                                        ? AppColors.textSecondaryDark
+                                        : AppColors.textSecondary,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -194,7 +228,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                                    color: isDark
+                                        ? AppColors.textSecondaryDark
+                                        : AppColors.textSecondary,
                                   ),
                                 ),
                               ],
@@ -202,7 +238,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             Icon(
                               Icons.bar_chart_rounded,
                               size: 20,
-                              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                              color: isDark
+                                  ? AppColors.textSecondaryDark
+                                  : AppColors.textSecondary,
                             ),
                           ],
                         ),
@@ -212,7 +250,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.w800,
-                            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                            color: isDark
+                                ? AppColors.textPrimaryDark
+                                : AppColors.textPrimary,
                             letterSpacing: -0.5,
                           ),
                         ),
@@ -247,12 +287,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       color: isDark ? AppColors.surfaceDark : Colors.white,
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                        color: isDark
+                            ? AppColors.borderDark
+                            : AppColors.borderLight,
                         width: 0.8,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.2 : 0.02,
+                          ),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -266,7 +310,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             Icon(
                               Icons.pie_chart_outline_rounded,
                               size: 18,
-                              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                              color: isDark
+                                  ? AppColors.textPrimaryDark
+                                  : AppColors.textPrimary,
                             ),
                             const SizedBox(width: 8),
                             Text(
@@ -274,7 +320,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
-                                color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                                color: isDark
+                                    ? AppColors.textPrimaryDark
+                                    : AppColors.textPrimary,
                               ),
                             ),
                           ],
@@ -300,15 +348,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildLegendItem("Food", const Color(0xFF4F46E5), isDark),
+                                  _buildLegendItem(
+                                    "Food",
+                                    const Color(0xFF4F46E5),
+                                    isDark,
+                                  ),
                                   const SizedBox(height: 8),
-                                  _buildLegendItem("Travel", const Color(0xFFEF4444), isDark),
+                                  _buildLegendItem(
+                                    "Travel",
+                                    const Color(0xFFEF4444),
+                                    isDark,
+                                  ),
                                   const SizedBox(height: 8),
-                                  _buildLegendItem("Shopping", const Color(0xFFF59E0B), isDark),
+                                  _buildLegendItem(
+                                    "Shopping",
+                                    const Color(0xFFF59E0B),
+                                    isDark,
+                                  ),
                                   const SizedBox(height: 8),
                                   _buildLegendItem(
                                     "Others",
-                                    isDark ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+                                    isDark
+                                        ? const Color(0xFF94A3B8)
+                                        : const Color(0xFF1E293B),
                                     isDark,
                                   ),
                                 ],
@@ -356,10 +418,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Container(
           width: 10,
           height: 10,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 8),
         Text(
@@ -367,7 +426,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w500,
-            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+            color: isDark
+                ? AppColors.textSecondaryDark
+                : AppColors.textSecondary,
           ),
         ),
       ],
@@ -380,7 +441,11 @@ class _DonutChartPainter extends CustomPainter {
   final double total;
   final bool isDark;
 
-  _DonutChartPainter({required this.data, required this.total, required this.isDark});
+  _DonutChartPainter({
+    required this.data,
+    required this.total,
+    required this.isDark,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {

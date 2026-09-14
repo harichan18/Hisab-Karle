@@ -11,7 +11,8 @@ import '../services/payment_ocr_service.dart';
 import '../services/split_calculator.dart';
 import '../utils/amount_parser.dart';
 import '../utils/receiver_matcher.dart';
-import '../main.dart';
+import '../services/transaction_service.dart';
+import 'friends/add_friend_page.dart';
 
 typedef FriendRecord = ({
   String name,
@@ -114,7 +115,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         // Must have a valid UID and MUST NOT be the currently authenticated user
         if (uid.isNotEmpty && (currentUid == null || uid != currentUid)) {
           friendMap[uid] = (
-            name: name.isNotEmpty ? name : (friendCode.isNotEmpty ? friendCode : 'Friend'),
+            name: name.isNotEmpty
+                ? name
+                : (friendCode.isNotEmpty ? friendCode : 'Friend'),
             uid: uid,
             email: email.isNotEmpty ? email : null,
             friendCode: friendCode.isNotEmpty ? friendCode : null,
@@ -128,8 +131,12 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       if (currentUid != null && currentUid.isNotEmpty) {
         try {
           final friendsCol = FirebaseFirestore.instance.collection('friends');
-          final user1Snap = await friendsCol.where('user1', isEqualTo: currentUid).get();
-          final user2Snap = await friendsCol.where('user2', isEqualTo: currentUid).get();
+          final user1Snap = await friendsCol
+              .where('user1', isEqualTo: currentUid)
+              .get();
+          final user2Snap = await friendsCol
+              .where('user2', isEqualTo: currentUid)
+              .get();
 
           final friendshipDocs = {
             for (final doc in user1Snap.docs) doc.id: doc,
@@ -161,11 +168,14 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                   final fEmail = (data['email'] as String? ?? '').trim();
                   final fCode = (data['friendCode'] as String? ?? '').trim();
                   final fUpi = (data['upiId'] as String? ?? '').trim();
-                  final fMobile = (data['mobileNumber'] as String? ?? '').trim();
+                  final fMobile = (data['mobileNumber'] as String? ?? '')
+                      .trim();
 
                   final resolvedName = fName.isNotEmpty
                       ? fName
-                      : (fCode.isNotEmpty ? fCode : (fEmail.isNotEmpty ? fEmail : 'Friend'));
+                      : (fCode.isNotEmpty
+                            ? fCode
+                            : (fEmail.isNotEmpty ? fEmail : 'Friend'));
 
                   friendMap[fUid] = (
                     name: resolvedName,
@@ -187,7 +197,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                   );
                 }
               } catch (e) {
-                debugPrint('[SharePaymentScreen] Error fetching user profile for $fUid: $e');
+                debugPrint(
+                  '[SharePaymentScreen] Error fetching user profile for $fUid: $e',
+                );
               }
             }
           }
@@ -243,7 +255,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       _isAnalyzing = true;
     });
 
-    final info = await PaymentOcrService.instance.processScreenshot(widget.imagePath);
+    final info = await PaymentOcrService.instance.processScreenshot(
+      widget.imagePath,
+    );
 
     if (mounted) {
       setState(() {
@@ -287,7 +301,8 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
   void _matchSuggestedReceiver() {
     final receiver = _extractedInfo?.receiverName?.trim();
     final upi = _extractedInfo?.upiId?.trim();
-    if ((receiver == null || receiver.isEmpty) && (upi == null || upi.isEmpty)) {
+    if ((receiver == null || receiver.isEmpty) &&
+        (upi == null || upi.isEmpty)) {
       if (mounted) {
         setState(() {
           _matchedCandidates = [];
@@ -342,17 +357,22 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     final totalAmount = AmountParser.parseAmount(_amountController.text) ?? 0.0;
     if (_selectedFriendUids.isEmpty || totalAmount <= 0) return;
 
-    final selected = _allFriends.where((f) => _selectedFriendUids.contains(f.uid)).toList();
+    final selected = _allFriends
+        .where((f) => _selectedFriendUids.contains(f.uid))
+        .toList();
 
     if (_splitType == SplitType.equal) {
       final shares = SplitCalculator.calculateEqualSplit(
         totalAmount: totalAmount,
-        friends: selected.map((f) => (name: f.name, uid: f.uid as String?)).toList(),
+        friends: selected
+            .map((f) => (name: f.name, uid: f.uid as String?))
+            .toList(),
       );
       for (final s in shares) {
         if (s.friendUid != null) {
           _customControllers[s.friendUid!]?.text = s.amount.toStringAsFixed(2);
-          _percentageControllers[s.friendUid!]?.text = s.percentage?.toStringAsFixed(1) ?? '';
+          _percentageControllers[s.friendUid!]?.text =
+              s.percentage?.toStringAsFixed(1) ?? '';
         }
       }
     } else if (_splitType == SplitType.percentage) {
@@ -369,32 +389,40 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     final totalAmount = AmountParser.parseAmount(_amountController.text) ?? 0.0;
     if (totalAmount <= 0 || _selectedFriendUids.isEmpty) return [];
 
-    final selected = _allFriends.where((f) => _selectedFriendUids.contains(f.uid)).toList();
+    final selected = _allFriends
+        .where((f) => _selectedFriendUids.contains(f.uid))
+        .toList();
 
     switch (_splitType) {
       case SplitType.equal:
         return SplitCalculator.calculateEqualSplit(
           totalAmount: totalAmount,
-          friends: selected.map((f) => (name: f.name, uid: f.uid as String?)).toList(),
+          friends: selected
+              .map((f) => (name: f.name, uid: f.uid as String?))
+              .toList(),
         );
 
       case SplitType.custom:
         final shares = <FriendSplitShare>[];
         for (final f in selected) {
-          final amt = AmountParser.parseAmount(_customControllers[f.uid]?.text) ?? 0.0;
-          shares.add(FriendSplitShare(
-            friendName: f.name,
-            friendUid: f.uid,
-            amount: amt,
-            percentage: (amt / totalAmount) * 100,
-          ));
+          final amt =
+              AmountParser.parseAmount(_customControllers[f.uid]?.text) ?? 0.0;
+          shares.add(
+            FriendSplitShare(
+              friendName: f.name,
+              friendUid: f.uid,
+              amount: amt,
+              percentage: (amt / totalAmount) * 100,
+            ),
+          );
         }
         return shares;
 
       case SplitType.percentage:
         final pcts = <({String name, String? uid, double percentage})>[];
         for (final f in selected) {
-          final pct = double.tryParse(_percentageControllers[f.uid]?.text ?? '') ?? 0.0;
+          final pct =
+              double.tryParse(_percentageControllers[f.uid]?.text ?? '') ?? 0.0;
           pcts.add((name: f.name, uid: f.uid, percentage: pct));
         }
         return SplitCalculator.calculatePercentageSplit(
@@ -418,7 +446,17 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       final amounts = <double>[];
       for (final uid in _selectedFriendUids) {
         final val = AmountParser.parseAmount(_customControllers[uid]?.text);
-        final friend = _allFriends.firstWhere((f) => f.uid == uid, orElse: () => (name: 'Friend', uid: uid, email: null, friendCode: null, upiId: null, mobileNumber: null));
+        final friend = _allFriends.firstWhere(
+          (f) => f.uid == uid,
+          orElse: () => (
+            name: 'Friend',
+            uid: uid,
+            email: null,
+            friendCode: null,
+            upiId: null,
+            mobileNumber: null,
+          ),
+        );
         if (val == null || val < 0) {
           return 'Enter a valid custom amount for ${friend.name}.';
         }
@@ -434,7 +472,17 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       double sumPct = 0;
       for (final uid in _selectedFriendUids) {
         final val = double.tryParse(_percentageControllers[uid]?.text ?? '');
-        final friend = _allFriends.firstWhere((f) => f.uid == uid, orElse: () => (name: 'Friend', uid: uid, email: null, friendCode: null, upiId: null, mobileNumber: null));
+        final friend = _allFriends.firstWhere(
+          (f) => f.uid == uid,
+          orElse: () => (
+            name: 'Friend',
+            uid: uid,
+            email: null,
+            friendCode: null,
+            upiId: null,
+            mobileNumber: null,
+          ),
+        );
         if (val == null || val < 0) {
           return 'Enter a valid percentage for ${friend.name}.';
         }
@@ -452,7 +500,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     final error = _validateInputs();
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: const Color(0xFFEF4444)),
+        SnackBar(
+          content: Text(error),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
       );
       return;
     }
@@ -490,6 +541,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       if (confirm != true) return;
     }
 
+    if (!mounted) return;
     setState(() {
       _currentStep = 1;
     });
@@ -499,7 +551,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     final error = _validateInputs();
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: const Color(0xFFEF4444)),
+        SnackBar(
+          content: Text(error),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
       );
       return;
     }
@@ -520,7 +575,14 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       for (final share in shares) {
         final friend = _allFriends.firstWhere(
           (f) => f.uid == share.friendUid,
-          orElse: () => (name: share.friendName, uid: share.friendUid ?? '', email: null, friendCode: null, upiId: null, mobileNumber: null),
+          orElse: () => (
+            name: share.friendName,
+            uid: share.friendUid ?? '',
+            email: null,
+            friendCode: null,
+            upiId: null,
+            mobileNumber: null,
+          ),
         );
         final peerUserId = friend.uid.isNotEmpty ? friend.uid : null;
 
@@ -582,9 +644,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
           _isSaving = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save transactions: $e'),
-            backgroundColor: const Color(0xFFEF4444),
+          const SnackBar(
+            content: Text('Failed to save transactions. Please try again.'),
+            backgroundColor: Color(0xFFEF4444),
           ),
         );
       }
@@ -595,8 +657,12 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.backgroundDark : AppColors.background;
-    final textPrimary = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
-    final textSecondary = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final textPrimary = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+    final textSecondary = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondary;
     final cardBg = isDark ? AppColors.surfaceDark : Colors.white;
     final cardBorder = isDark ? AppColors.borderDark : AppColors.borderLight;
 
@@ -636,10 +702,28 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         ],
       ),
       body: _isAnalyzing
-          ? _buildAnalyzingState(isDark, textPrimary, textSecondary, cardBg, cardBorder)
+          ? _buildAnalyzingState(
+              isDark,
+              textPrimary,
+              textSecondary,
+              cardBg,
+              cardBorder,
+            )
           : (_currentStep == 0
-              ? _buildDetailsAndFriendsStep(isDark, textPrimary, textSecondary, cardBg, cardBorder)
-              : _buildReviewStep(isDark, textPrimary, textSecondary, cardBg, cardBorder)),
+                ? _buildDetailsAndFriendsStep(
+                    isDark,
+                    textPrimary,
+                    textSecondary,
+                    cardBg,
+                    cardBorder,
+                  )
+                : _buildReviewStep(
+                    isDark,
+                    textPrimary,
+                    textSecondary,
+                    cardBg,
+                    cardBorder,
+                  )),
     );
   }
 
@@ -664,7 +748,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: cardBorder),
                 image: DecorationImage(
-                  image: ResizeImage(FileImage(File(widget.imagePath)), width: 360),
+                  image: ResizeImage(
+                    FileImage(File(widget.imagePath)),
+                    width: 360,
+                  ),
                   fit: BoxFit.cover,
                 ),
                 boxShadow: [
@@ -694,10 +781,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
             Text(
               "Extracting amount, status, and transaction details",
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: textSecondary,
-              ),
+              style: TextStyle(fontSize: 13, color: textSecondary),
             ),
           ],
         ),
@@ -750,35 +834,37 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     ),
                   )
                 : isFailed
-                    ? Text(
-                        "Payment Failed",
+                ? Text(
+                    "Payment Failed",
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Payment Status Unclear",
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
                           color: statusColor,
                         ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Payment Status Unclear",
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: statusColor,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            "Please verify the payment status.",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? Colors.white70 : const Color(0xFF92400E),
-                            ),
-                          ),
-                        ],
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Please verify the payment status.",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? Colors.white70
+                              : const Color(0xFF92400E),
+                        ),
+                      ),
+                    ],
+                  ),
           ),
           if (appName != null && appName.isNotEmpty) ...[
             Container(
@@ -864,10 +950,15 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: cardBorder),
                 image: DecorationImage(
-                  image: ResizeImage(FileImage(File(widget.imagePath)), width: 480),
+                  image: ResizeImage(
+                    FileImage(File(widget.imagePath)),
+                    width: 480,
+                  ),
                   fit: BoxFit.contain,
                 ),
-                color: isDark ? const Color(0xFF0F1216) : const Color(0xFFF3F4F6),
+                color: isDark
+                    ? const Color(0xFF0F1216)
+                    : const Color(0xFFF3F4F6),
               ),
             ),
           ],
@@ -907,12 +998,19 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     const SizedBox(width: 8),
                     if (_amountController.text.trim().isEmpty)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.2 : 0.1),
+                          color: const Color(
+                            0xFFF59E0B,
+                          ).withValues(alpha: isDark ? 0.2 : 0.1),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: const Color(0xFFF59E0B).withValues(alpha: 0.5),
+                            color: const Color(
+                              0xFFF59E0B,
+                            ).withValues(alpha: 0.5),
                             width: 0.6,
                           ),
                         ),
@@ -947,7 +1045,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     Expanded(
                       child: TextFormField(
                         controller: _amountController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
@@ -990,7 +1090,11 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                 // Note Input
                 Text(
                   "Note / Description",
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSecondary),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 TextFormField(
@@ -999,13 +1103,20 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                   decoration: InputDecoration(
                     hintText: "What was this for?",
                     hintStyle: TextStyle(fontSize: 12, color: textSecondary),
-                    prefixIcon: Icon(Icons.notes_rounded, size: 18, color: textSecondary),
+                    prefixIcon: Icon(
+                      Icons.notes_rounded,
+                      size: 18,
+                      color: textSecondary,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(color: cardBorder),
                     ),
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -1013,7 +1124,11 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                 // Date Picker Input
                 Text(
                   "Date",
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSecondary),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Row(
@@ -1023,7 +1138,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                         controller: _dateController,
                         readOnly: true,
                         onTap: () async {
-                          final current = DateTime.tryParse(_dateController.text) ?? DateTime.now();
+                          final current =
+                              DateTime.tryParse(_dateController.text) ??
+                              DateTime.now();
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: current,
@@ -1038,13 +1155,20 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                         },
                         style: TextStyle(fontSize: 13, color: textPrimary),
                         decoration: InputDecoration(
-                          prefixIcon: Icon(Icons.calendar_today_rounded, size: 16, color: textSecondary),
+                          prefixIcon: Icon(
+                            Icons.calendar_today_rounded,
+                            size: 16,
+                            color: textSecondary,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: BorderSide(color: cardBorder),
                           ),
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ),
@@ -1095,7 +1219,13 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.auto_awesome, size: 14, color: isDark ? Colors.white70 : const Color(0xFF111827)),
+                      Icon(
+                        Icons.auto_awesome,
+                        size: 14,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF111827),
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
@@ -1110,74 +1240,40 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  if (_matchedCandidates.length == 1 && _matchedCandidates.first.confidence == MatchConfidence.high) ...[
+                  if (_matchedCandidates.length == 1 &&
+                      _matchedCandidates.first.confidence ==
+                          MatchConfidence.high) ...[
                     Text(
                       "Possible match:",
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textSecondary),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Builder(builder: (context) {
-                      final c = _matchedCandidates.first;
-                      final isSelected = _selectedFriendUids.contains(c.friend.uid);
-                      return InkWell(
-                        onTap: () => _toggleFriendSelection(c.friend.uid),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFD1FAE5))
-                                : (isDark ? const Color(0xFF1F2937) : const Color(0xFFF3F4F6)),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFF10B981)
-                                  : cardBorder,
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                size: 14,
-                                color: isSelected ? const Color(0xFF10B981) : textSecondary,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                c.friend.name,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                  ] else if (_matchedCandidates.isNotEmpty) ...[
-                    Text(
-                      "Possible matches:",
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textSecondary),
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: _matchedCandidates.map((c) {
-                        final isSelected = _selectedFriendUids.contains(c.friend.uid);
+                    Builder(
+                      builder: (context) {
+                        final c = _matchedCandidates.first;
+                        final isSelected = _selectedFriendUids.contains(
+                          c.friend.uid,
+                        );
                         return InkWell(
                           onTap: () => _toggleFriendSelection(c.friend.uid),
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFD1FAE5))
-                                  : (isDark ? const Color(0xFF1F2937) : const Color(0xFFF3F4F6)),
+                                  ? (isDark
+                                        ? const Color(0xFF064E3B)
+                                        : const Color(0xFFD1FAE5))
+                                  : (isDark
+                                        ? const Color(0xFF1F2937)
+                                        : const Color(0xFFF3F4F6)),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: isSelected
@@ -1190,9 +1286,81 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                  isSelected
+                                      ? Icons.check_circle_rounded
+                                      : Icons.radio_button_unchecked_rounded,
                                   size: 14,
-                                  color: isSelected ? const Color(0xFF10B981) : textSecondary,
+                                  color: isSelected
+                                      ? const Color(0xFF10B981)
+                                      : textSecondary,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  c.friend.name,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ] else if (_matchedCandidates.isNotEmpty) ...[
+                    Text(
+                      "Possible matches:",
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: _matchedCandidates.map((c) {
+                        final isSelected = _selectedFriendUids.contains(
+                          c.friend.uid,
+                        );
+                        return InkWell(
+                          onTap: () => _toggleFriendSelection(c.friend.uid),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? (isDark
+                                        ? const Color(0xFF064E3B)
+                                        : const Color(0xFFD1FAE5))
+                                  : (isDark
+                                        ? const Color(0xFF1F2937)
+                                        : const Color(0xFFF3F4F6)),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF10B981)
+                                    : cardBorder,
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isSelected
+                                      ? Icons.check_circle_rounded
+                                      : Icons.radio_button_unchecked_rounded,
+                                  size: 14,
+                                  color: isSelected
+                                      ? const Color(0xFF10B981)
+                                      : textSecondary,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
@@ -1239,10 +1407,17 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
               decoration: InputDecoration(
                 hintText: "Search friends...",
                 hintStyle: TextStyle(fontSize: 12, color: textSecondary),
-                prefixIcon: Icon(Icons.search_rounded, size: 18, color: textSecondary),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 18,
+                  color: textSecondary,
+                ),
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
             ),
           ),
@@ -1259,11 +1434,19 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
               ),
               child: Column(
                 children: [
-                  Icon(Icons.people_outline_rounded, size: 36, color: textSecondary),
+                  Icon(
+                    Icons.people_outline_rounded,
+                    size: 36,
+                    color: textSecondary,
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     "No Friends Found",
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textPrimary),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -1276,7 +1459,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     onPressed: () async {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const AddFriendPage()),
+                        MaterialPageRoute(
+                          builder: (_) => const AddFriendPage(),
+                        ),
                       );
                       _loadFriends();
                     },
@@ -1297,7 +1482,8 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
               child: ListView.separated(
                 shrinkWrap: true,
                 itemCount: _filteredFriends.length,
-                separatorBuilder: (context, index) => Divider(height: 1, color: cardBorder),
+                separatorBuilder: (context, index) =>
+                    Divider(height: 1, color: cardBorder),
                 itemBuilder: (context, index) {
                   final f = _filteredFriends[index];
                   final isSelected = _selectedFriendUids.contains(f.uid);
@@ -1306,7 +1492,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     onTap: () => _toggleFriendSelection(f.uid),
                     borderRadius: BorderRadius.circular(16),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       child: Row(
                         children: [
                           CircleAvatar(
@@ -1336,10 +1525,14 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                                     color: textPrimary,
                                   ),
                                 ),
-                                if (f.friendCode != null && f.friendCode!.isNotEmpty)
+                                if (f.friendCode != null &&
+                                    f.friendCode!.isNotEmpty)
                                   Text(
                                     f.friendCode!,
-                                    style: TextStyle(fontSize: 11, color: textSecondary),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: textSecondary,
+                                    ),
                                   ),
                               ],
                             ),
@@ -1347,9 +1540,13 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                           Checkbox(
                             value: isSelected,
                             onChanged: (_) => _toggleFriendSelection(f.uid),
-                            activeColor: isDark ? Colors.white : const Color(0xFF111827),
+                            activeColor: isDark
+                                ? Colors.white
+                                : const Color(0xFF111827),
                             checkColor: isDark ? Colors.black : Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
                           ),
                         ],
                       ),
@@ -1384,7 +1581,13 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
             const SizedBox(height: 12),
 
             // Live Breakdown Table
-            _buildBreakdownTable(isDark, textPrimary, textSecondary, cardBg, cardBorder),
+            _buildBreakdownTable(
+              isDark,
+              textPrimary,
+              textSecondary,
+              cardBg,
+              cardBorder,
+            ),
             const SizedBox(height: 20),
           ],
 
@@ -1392,11 +1595,17 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
           SizedBox(
             height: 48,
             child: ElevatedButton(
-              onPressed: _selectedFriendUids.isEmpty ? null : _onProceedToReview,
+              onPressed: _selectedFriendUids.isEmpty
+                  ? null
+                  : _onProceedToReview,
               style: ElevatedButton.styleFrom(
-                backgroundColor: isDark ? Colors.white : const Color(0xFF111827),
+                backgroundColor: isDark
+                    ? Colors.white
+                    : const Color(0xFF111827),
                 foregroundColor: isDark ? Colors.black87 : Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 elevation: 0,
               ),
               child: const Text(
@@ -1431,7 +1640,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
             border: Border.all(
               color: isSelected
                   ? (isDark ? Colors.white : const Color(0xFF111827))
-                  : (isDark ? const Color(0xFF3A4150) : const Color(0xFFE5E7EB)),
+                  : (isDark
+                        ? const Color(0xFF3A4150)
+                        : const Color(0xFFE5E7EB)),
               width: 0.8,
             ),
           ),
@@ -1460,7 +1671,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
   ) {
     final totalAmount = double.tryParse(_amountController.text) ?? 0.0;
     final shares = _computeCurrentShares();
-    final selectedFriends = _allFriends.where((f) => _selectedFriendUids.contains(f.uid)).toList();
+    final selectedFriends = _allFriends
+        .where((f) => _selectedFriendUids.contains(f.uid))
+        .toList();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1488,7 +1701,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                   ),
                   if (_splitType == SplitType.equal) ...[
                     Text(
-                      "₹${shares.firstWhere((s) => s.friendUid == friend.uid, orElse: () => FriendSplitShare(friendName: friend.name, friendUid: friend.uid, amount: 0)).amount.toStringAsFixed(2)}",
+                      "₹${shares.firstWhere(
+                        (s) => s.friendUid == friend.uid,
+                        orElse: () => FriendSplitShare(friendName: friend.name, friendUid: friend.uid, amount: 0),
+                      ).amount.toStringAsFixed(2)}",
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -1501,13 +1717,20 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                       height: 36,
                       child: TextFormField(
                         controller: _customControllers[friend.uid],
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         style: TextStyle(fontSize: 12, color: textPrimary),
                         decoration: InputDecoration(
                           prefixText: "₹ ",
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
                         ),
                         onChanged: (_) => setState(() {}),
                       ),
@@ -1518,13 +1741,20 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                       height: 36,
                       child: TextFormField(
                         controller: _percentageControllers[friend.uid],
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         style: TextStyle(fontSize: 12, color: textPrimary),
                         decoration: InputDecoration(
                           suffixText: "%",
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
                         ),
                         onChanged: (_) => setState(() {}),
                       ),
@@ -1539,12 +1769,20 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
             children: [
               Text(
                 "Total Amount",
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textSecondary),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: textSecondary,
+                ),
               ),
               const Spacer(),
               Text(
                 "₹${totalAmount.toStringAsFixed(2)}",
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: textPrimary),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: textPrimary,
+                ),
               ),
             ],
           ),
@@ -1591,7 +1829,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E222A) : const Color(0xFFF3F4F6),
+                        color: isDark
+                            ? const Color(0xFF1E222A)
+                            : const Color(0xFFF3F4F6),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
@@ -1655,7 +1895,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     Text(
                       _splitType == SplitType.equal
                           ? "Equal Split"
-                          : (_splitType == SplitType.custom ? "Custom Split" : "Percentage Split"),
+                          : (_splitType == SplitType.custom
+                                ? "Custom Split"
+                                : "Percentage Split"),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -1695,7 +1937,9 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: isDark ? Colors.white : const Color(0xFF111827),
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF111827),
                           ),
                         ),
                       ],
@@ -1750,11 +1994,16 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: cardBorder, width: 1.0),
                       foregroundColor: textPrimary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     child: const Text(
                       "Edit",
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
@@ -1767,10 +2016,14 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                   child: ElevatedButton(
                     onPressed: _isSaving ? null : _confirmAndSaveTransactions,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark ? Colors.white : const Color(0xFF111827),
+                      backgroundColor: isDark
+                          ? Colors.white
+                          : const Color(0xFF111827),
                       foregroundColor: isDark ? Colors.black87 : Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     child: _isSaving
                         ? SizedBox(
@@ -1783,7 +2036,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                           )
                         : const Text(
                             "Confirm & Add",
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                   ),
                 ),

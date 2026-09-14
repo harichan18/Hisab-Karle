@@ -1,8 +1,4 @@
-enum PaymentStatus {
-  successful,
-  failed,
-  unclear,
-}
+enum PaymentStatus { successful, failed, unclear }
 
 class ExtractedPaymentInfo {
   final double? amount;

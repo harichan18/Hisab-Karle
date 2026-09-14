@@ -40,7 +40,10 @@ class AmountParser {
 
     // Remove currency indicators: ₹, \u20B9, \u20A8, Rs, INR, Re
     var cleaned = normalized.replaceAll(
-      RegExp(r'(?:[₹\u20B9\u20A8]|rs\.?|inr|re\.?|paid|amount|you paid|sent)', caseSensitive: false),
+      RegExp(
+        r'(?:[₹\u20B9\u20A8]|rs\.?|inr|re\.?|paid|amount|you paid|sent)',
+        caseSensitive: false,
+      ),
       '',
     );
 

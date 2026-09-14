@@ -8,7 +8,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/expense_model.dart';
 import '../services/expense_service.dart';
-import '../main.dart'; // For CustomCachedImage etc.
+import '../widgets/image/custom_cached_image.dart';
 import '../theme/app_theme.dart';
 
 class DailyExpenditureScreen extends StatefulWidget {
@@ -54,51 +54,86 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
 
   void _loadExpenses() {
     setState(() => isLoading = true);
-    ExpenseService.expensesStream(currentUserId!).listen((data) {
-      if (mounted) {
-        setState(() {
-          expenses = data;
-          isLoading = false;
-        });
-      }
-    }, onError: (err) {
-      if (mounted) {
-        setState(() => isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading expenses: $err')),
-        );
-      }
-    });
+    ExpenseService.expensesStream(currentUserId!).listen(
+      (data) {
+        if (mounted) {
+          setState(() {
+            expenses = data;
+            isLoading = false;
+          });
+        }
+      },
+      onError: (err) {
+        debugPrint('[DailyExpenditure] Error loading expenses: $err');
+        if (mounted) {
+          setState(() => isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Unable to load expenses. Please check your connection.',
+              ),
+            ),
+          );
+        }
+      },
+    );
   }
 
   double get todaySpending {
     final now = DateTime.now();
     return expenses
-        .where((e) => e.expenseDate.year == now.year &&
-                      e.expenseDate.month == now.month &&
-                      e.expenseDate.day == now.day)
+        .where(
+          (e) =>
+              e.expenseDate.year == now.year &&
+              e.expenseDate.month == now.month &&
+              e.expenseDate.day == now.day,
+        )
         .fold(0.0, (sum, e) => sum + e.amount);
   }
 
   double get weekSpending {
     final now = DateTime.now();
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-    final startOfDay = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+    final startOfDay = DateTime(
+      startOfWeek.year,
+      startOfWeek.month,
+      startOfWeek.day,
+    );
     return expenses
-        .where((e) => e.expenseDate.isAfter(startOfDay) || e.expenseDate.isAtSameMomentAs(startOfDay))
+        .where(
+          (e) =>
+              e.expenseDate.isAfter(startOfDay) ||
+              e.expenseDate.isAtSameMomentAs(startOfDay),
+        )
         .fold(0.0, (sum, e) => sum + e.amount);
   }
 
   double get monthSpending {
     final now = DateTime.now();
     return expenses
-        .where((e) => e.expenseDate.year == now.year &&
-                      e.expenseDate.month == now.month)
+        .where(
+          (e) =>
+              e.expenseDate.year == now.year &&
+              e.expenseDate.month == now.month,
+        )
         .fold(0.0, (sum, e) => sum + e.amount);
   }
 
   String _formatDateGroupLabel(DateTime date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     final day = date.day.toString().padLeft(2, '0');
     final month = months[date.month - 1];
     final year = date.year;
@@ -127,7 +162,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
       groups[label]!.add(exp);
     }
 
-    return orderedDates.map((date) => _ExpenseGroup(date, groups[date]!)).toList();
+    return orderedDates
+        .map((date) => _ExpenseGroup(date, groups[date]!))
+        .toList();
   }
 
   Future<void> _deleteExpense(ExpenseModel expense) async {
@@ -135,7 +172,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Expense?'),
-        content: Text('Are you sure you want to delete this expense of \u20B9${expense.amount.toStringAsFixed(0)}?'),
+        content: Text(
+          'Are you sure you want to delete this expense of \u20B9${expense.amount.toStringAsFixed(0)}?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -150,6 +189,7 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
     );
 
     if (confirmed != true || expense.id == null) return;
+    if (!mounted) return;
 
     setState(() => isLoading = true);
     try {
@@ -159,9 +199,12 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
         const SnackBar(content: Text('Expense deleted successfully.')),
       );
     } catch (e) {
+      debugPrint('[DailyExpenditure] Failed to delete expense: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete expense: $e')),
+        const SnackBar(
+          content: Text('Failed to delete expense. Please try again.'),
+        ),
       );
     } finally {
       _loadExpenses();
@@ -197,10 +240,7 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
             InteractiveViewer(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: CustomCachedImage(
-                  url: url,
-                  fit: BoxFit.contain,
-                ),
+                child: CustomCachedImage(url: url, fit: BoxFit.contain),
               ),
             ),
             IconButton(
@@ -256,7 +296,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: isDark ? const Color(0xFF27272A) : AppColors.darkCard,
+                backgroundColor: isDark
+                    ? const Color(0xFF27272A)
+                    : AppColors.darkCard,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
                 ),
@@ -281,8 +323,14 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
                               child: _buildSummaryCard(
                                 title: "Today",
                                 amount: todaySpending,
-                                bgColor: isDark ? const Color(0xFF064E3B).withValues(alpha: 0.25) : AppColors.collectBg,
-                                labelColor: isDark ? const Color(0xFF6EE7B7) : AppColors.collectText,
+                                bgColor: isDark
+                                    ? const Color(
+                                        0xFF064E3B,
+                                      ).withValues(alpha: 0.25)
+                                    : AppColors.collectBg,
+                                labelColor: isDark
+                                    ? const Color(0xFF6EE7B7)
+                                    : AppColors.collectText,
                                 isDark: isDark,
                               ),
                             ),
@@ -291,7 +339,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
                               child: _buildSummaryCard(
                                 title: "This Week",
                                 amount: weekSpending,
-                                bgColor: isDark ? AppColors.indigoBgDark : AppColors.indigoBg,
+                                bgColor: isDark
+                                    ? AppColors.indigoBgDark
+                                    : AppColors.indigoBg,
                                 labelColor: const Color(0xFF818CF8),
                                 isDark: isDark,
                               ),
@@ -302,7 +352,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
                         _buildSummaryCard(
                           title: "This Month",
                           amount: monthSpending,
-                          bgColor: isDark ? AppColors.amberBgDark : AppColors.amberBg,
+                          bgColor: isDark
+                              ? AppColors.amberBgDark
+                              : AppColors.amberBg,
                           labelColor: const Color(0xFFF59E0B),
                           isFullWidth: true,
                           isDark: isDark,
@@ -324,24 +376,32 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
                             Container(
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                color: isDark ? AppColors.surfaceDark : Colors.white,
+                                color: isDark
+                                    ? AppColors.surfaceDark
+                                    : Colors.white,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                                  color: isDark
+                                      ? AppColors.borderDark
+                                      : AppColors.borderLight,
                                   width: 1,
                                 ),
                               ),
                               child: Icon(
                                 Icons.account_balance_wallet_outlined,
                                 size: 48,
-                                color: isDark ? AppColors.textMutedDark : AppColors.textMuted,
+                                color: isDark
+                                    ? AppColors.textMutedDark
+                                    : AppColors.textMuted,
                               ),
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'No expenses recorded yet.',
                               style: TextStyle(
-                                color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                                color: isDark
+                                    ? AppColors.textPrimaryDark
+                                    : AppColors.textPrimary,
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -350,7 +410,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
                             Text(
                               "Tap '+ Add Expense' to begin tracking.",
                               style: TextStyle(
-                                color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                                color: isDark
+                                    ? AppColors.textSecondaryDark
+                                    : AppColors.textSecondary,
                                 fontSize: 13,
                               ),
                             ),
@@ -361,97 +423,126 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
                   )
                 else
                   SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, groupIndex) {
-                          final group = groupedExpenses[groupIndex];
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildDateHeader(group.dateLabel, isDark),
-                              const SizedBox(height: 8),
-                              ...group.expenses.map((exp) {
-                                final color = categoryColors[exp.category] ?? Colors.blueGrey;
-                                final icon = categoryIcons[exp.category] ?? Icons.category_rounded;
+                      delegate: SliverChildBuilderDelegate((
+                        context,
+                        groupIndex,
+                      ) {
+                        final group = groupedExpenses[groupIndex];
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildDateHeader(group.dateLabel, isDark),
+                            const SizedBox(height: 8),
+                            ...group.expenses.map((exp) {
+                              final color =
+                                  categoryColors[exp.category] ??
+                                  Colors.blueGrey;
+                              final icon =
+                                  categoryIcons[exp.category] ??
+                                  Icons.category_rounded;
 
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  decoration: BoxDecoration(
-                                    color: isDark ? AppColors.surfaceDark : Colors.white,
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                      color: isDark ? AppColors.borderDark : AppColors.borderLight,
-                                      width: 0.8,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 2),
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? AppColors.surfaceDark
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? AppColors.borderDark
+                                        : AppColors.borderLight,
+                                    width: 0.8,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: isDark ? 0.2 : 0.02,
                                       ),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 6,
+                                  ),
+                                  leading: CircleAvatar(
+                                    backgroundColor: color.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    child: Icon(icon, color: color, size: 20),
+                                  ),
+                                  title: Text(
+                                    "${exp.category}${exp.description.isNotEmpty ? ' • ${exp.description}' : ''}",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: isDark
+                                          ? AppColors.textPrimaryDark
+                                          : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Text(
+                                      _formatTime(exp.expenseDate),
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? AppColors.textSecondaryDark
+                                            : AppColors.textSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        "\u20B9${exp.amount.toStringAsFixed(0)}",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                          color: isDark
+                                              ? AppColors.textPrimaryDark
+                                              : AppColors.textPrimary,
+                                        ),
+                                      ),
+                                      if (exp.receiptUrl != null &&
+                                          exp.receiptUrl!.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.receipt_long_rounded,
+                                            size: 20,
+                                            color: isDark
+                                                ? AppColors.textSecondaryDark
+                                                : AppColors.textSecondary,
+                                          ),
+                                          onPressed: () =>
+                                              _viewReceipt(exp.receiptUrl!),
+                                          tooltip: 'View Receipt',
+                                        ),
+                                      ],
                                     ],
                                   ),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                    leading: CircleAvatar(
-                                      backgroundColor: color.withValues(alpha: 0.12),
-                                      child: Icon(icon, color: color, size: 20),
-                                    ),
-                                    title: Text(
-                                      "${exp.category}${exp.description.isNotEmpty ? ' • ${exp.description}' : ''}",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
-                                        color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    subtitle: Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text(
-                                        _formatTime(exp.expenseDate),
-                                        style: TextStyle(
-                                          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          "\u20B9${exp.amount.toStringAsFixed(0)}",
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 16,
-                                            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
-                                          ),
-                                        ),
-                                        if (exp.receiptUrl != null && exp.receiptUrl!.isNotEmpty) ...[
-                                          const SizedBox(width: 8),
-                                          IconButton(
-                                            icon: Icon(
-                                              Icons.receipt_long_rounded,
-                                              size: 20,
-                                              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
-                                            ),
-                                            onPressed: () => _viewReceipt(exp.receiptUrl!),
-                                            tooltip: 'View Receipt',
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    onTap: () => _showAddEditExpenseSheet(expense: exp),
-                                    onLongPress: () => _deleteExpense(exp),
-                                  ),
-                                );
-                              }),
-                              const SizedBox(height: 12),
-                            ],
-                          );
-                        },
-                        childCount: groupedExpenses.length,
-                      ),
+                                  onTap: () =>
+                                      _showAddEditExpenseSheet(expense: exp),
+                                  onLongPress: () => _deleteExpense(exp),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 12),
+                          ],
+                        );
+                      }, childCount: groupedExpenses.length),
                     ),
                   ),
               ],
@@ -474,7 +565,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
         color: bgColor,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: isDark ? bgColor.withValues(alpha: 0.5) : bgColor.withValues(alpha: 0.8),
+          color: isDark
+              ? bgColor.withValues(alpha: 0.5)
+              : bgColor.withValues(alpha: 0.8),
           width: 1,
         ),
       ),
@@ -520,7 +613,9 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
             formattedDate,
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+              color: isDark
+                  ? AppColors.textSecondaryDark
+                  : AppColors.textSecondary,
               fontSize: 12,
             ),
           ),
@@ -593,7 +688,10 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final picked = await ImagePicker().pickImage(source: source, imageQuality: 80);
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 80,
+      );
       if (picked != null) {
         setState(() {
           _receiptImage = picked;
@@ -601,16 +699,17 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to pick image: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to pick image: $e')));
     }
   }
 
   Future<String?> _compressAndUploadReceipt(File file) async {
     try {
       final tempDir = await getTemporaryDirectory();
-      final targetPath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_exp.jpg';
+      final targetPath =
+          '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_exp.jpg';
       final compressed = await FlutterImageCompress.compressAndGetFile(
         file.path,
         targetPath,
@@ -619,10 +718,14 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
       if (compressed == null) return null;
 
       final compressedFile = File(compressed.path);
-      final uri = Uri.parse('https://api.cloudinary.com/v1_1/dxwf10vjg/image/upload');
+      final uri = Uri.parse(
+        'https://api.cloudinary.com/v1_1/dxwf10vjg/image/upload',
+      );
       final request = http.MultipartRequest('POST', uri)
         ..fields['upload_preset'] = 'receipt_upload'
-        ..files.add(await http.MultipartFile.fromPath('file', compressedFile.path));
+        ..files.add(
+          await http.MultipartFile.fromPath('file', compressedFile.path),
+        );
 
       final streamedResponse = await request.send();
       final responseBody = await streamedResponse.stream.bytesToString();
@@ -644,7 +747,10 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
     String? receiptUrl = _existingReceiptUrl;
 
     if (_receiptImage != null) {
-      final uploadedUrl = await _compressAndUploadReceipt(File(_receiptImage!.path));
+      final uploadedUrl = await _compressAndUploadReceipt(
+        File(_receiptImage!.path),
+      );
+      if (!mounted) return;
       if (uploadedUrl != null) {
         receiptUrl = uploadedUrl;
       }
@@ -672,9 +778,12 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
       widget.onSaved();
       Navigator.pop(context);
     } catch (e) {
+      debugPrint('[DailyExpenditure] Failed to save expense: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save expense: $e')),
+        const SnackBar(
+          content: Text('Failed to save expense. Please try again.'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -720,14 +829,19 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
               TextFormField(
                 controller: _amountController,
                 keyboardType: TextInputType.number,
-                style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Amount',
                   prefixText: '₹ ',
                   prefixIcon: Icon(Icons.currency_rupee_rounded),
                 ),
                 validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'Please enter amount';
+                  if (val == null || val.trim().isEmpty) {
+                    return 'Please enter amount';
+                  }
                   if (double.tryParse(val) == null) return 'Invalid number';
                   return null;
                 },
@@ -735,13 +849,18 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _selectedCategory,
-                style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
                 dropdownColor: Colors.white,
                 decoration: const InputDecoration(
                   labelText: 'Category',
                   prefixIcon: Icon(Icons.category_rounded),
                 ),
-                items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                items: _categories
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedCategory = val);
                 },
@@ -796,7 +915,8 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                     ),
                   ],
                 ),
-              ] else if (_existingReceiptUrl != null && _existingReceiptUrl!.isNotEmpty) ...[
+              ] else if (_existingReceiptUrl != null &&
+                  _existingReceiptUrl!.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
@@ -818,10 +938,15 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         )
                       : Text(
-                          widget.expense == null ? 'Save Expense' : 'Update Expense',
+                          widget.expense == null
+                              ? 'Save Expense'
+                              : 'Update Expense',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                 ),

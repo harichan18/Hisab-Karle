@@ -1,8 +1,4 @@
-enum SplitType {
-  equal,
-  custom,
-  percentage,
-}
+enum SplitType { equal, custom, percentage }
 
 class FriendSplitShare {
   final String friendName;

@@ -46,10 +46,7 @@ void main() {
     });
 
     test('₹1000 split equally between 2 friends', () {
-      final friends = [
-        (name: 'Rahul', uid: 'u1'),
-        (name: 'Aman', uid: 'u2'),
-      ];
+      final friends = [(name: 'Rahul', uid: 'u1'), (name: 'Aman', uid: 'u2')];
 
       final shares = SplitCalculator.calculateEqualSplit(
         totalAmount: 1000.0,
