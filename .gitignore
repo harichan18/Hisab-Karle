@@ -48,3 +48,23 @@ app.*.map.json
 ui*.xml
 verify_dialog.xml
 window_*.xml
+
+# Sensitive files & credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+service-account*.json
+google-services-private.json
+credentials.json
+secrets.json
+client_secrets.json
+
+# Local build logs and diagnostics
+*build*.log
+*build*.txt
+firebase_storage_task_log.txt

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Hisab Kitab pre-commit secret safety hook
+dart run tool/check_secrets.dart
+if [ $? -ne 0 ]; then
+  echo "Commit blocked: secrets detected in staged files."
+  exit 1
+fi
