@@ -80,7 +80,7 @@ class SyncService with WidgetsBindingObserver {
         );
         syncPending();
       } else {
-        pendingCountNotifier.value = 0;
+        reset();
       }
     });
 

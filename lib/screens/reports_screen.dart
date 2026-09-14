@@ -33,7 +33,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  double get _totalSpending {
+  List<ExpenseModel> get _filteredExpenses {
     final now = DateTime.now();
     if (_selectedPeriod == 'This Month') {
       return _expenses
@@ -42,7 +42,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 e.expenseDate.year == now.year &&
                 e.expenseDate.month == now.month,
           )
-          .fold(0.0, (sum, e) => sum + e.amount);
+          .toList();
     } else if (_selectedPeriod == 'This Week') {
       final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
       final startOfDay = DateTime(
@@ -56,10 +56,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 e.expenseDate.isAfter(startOfDay) ||
                 e.expenseDate.isAtSameMomentAs(startOfDay),
           )
-          .fold(0.0, (sum, e) => sum + e.amount);
+          .toList();
     } else {
-      return _expenses.fold(0.0, (sum, e) => sum + e.amount);
+      return _expenses;
     }
+  }
+
+  double get _totalSpending {
+    return _filteredExpenses.fold(0.0, (sum, e) => sum + e.amount);
   }
 
   Map<String, double> get _categorySpending {
@@ -69,14 +73,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       'Shopping': 0,
       'Others': 0,
     };
-    final now = DateTime.now();
-    final filtered = _expenses.where((e) {
-      if (_selectedPeriod == 'This Month') {
-        return e.expenseDate.year == now.year &&
-            e.expenseDate.month == now.month;
-      }
-      return true;
-    });
+    final filtered = _filteredExpenses;
 
     for (final e in filtered) {
       if (map.containsKey(e.category)) {

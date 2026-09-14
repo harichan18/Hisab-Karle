@@ -252,6 +252,21 @@ void main() {
       );
 
       expect(
+        SplitCalculator.calculateEqualSplit(
+          totalAmount: double.nan,
+          friends: [(name: 'A', uid: 'a')],
+        ),
+        isEmpty,
+      );
+      expect(
+        SplitCalculator.calculateEqualSplit(
+          totalAmount: double.infinity,
+          friends: [(name: 'A', uid: 'a')],
+        ),
+        isEmpty,
+      );
+
+      expect(
         SplitCalculator.calculatePercentageSplit(
           totalAmount: 0,
           friends: [(name: 'A', uid: 'a', percentage: 100)],
@@ -262,6 +277,27 @@ void main() {
         SplitCalculator.calculatePercentageSplit(
           totalAmount: -100,
           friends: [(name: 'A', uid: 'a', percentage: 100)],
+        ),
+        isEmpty,
+      );
+      expect(
+        SplitCalculator.calculatePercentageSplit(
+          totalAmount: double.nan,
+          friends: [(name: 'A', uid: 'a', percentage: 100)],
+        ),
+        isEmpty,
+      );
+      expect(
+        SplitCalculator.calculatePercentageSplit(
+          totalAmount: 100,
+          friends: [(name: 'A', uid: 'a', percentage: double.nan)],
+        ),
+        isEmpty,
+      );
+      expect(
+        SplitCalculator.calculatePercentageSplit(
+          totalAmount: 100,
+          friends: [(name: 'A', uid: 'a', percentage: -10)],
         ),
         isEmpty,
       );

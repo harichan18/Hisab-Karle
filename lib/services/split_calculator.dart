@@ -35,7 +35,10 @@ class SplitCalculator {
     required double totalAmount,
     required List<({String name, String? uid})> friends,
   }) {
-    if (friends.isEmpty || totalAmount <= 0) {
+    if (friends.isEmpty ||
+        totalAmount <= 0 ||
+        totalAmount.isNaN ||
+        totalAmount.isInfinite) {
       return [];
     }
 
@@ -70,7 +73,10 @@ class SplitCalculator {
     required double totalAmount,
     required List<({String name, String? uid, double percentage})> friends,
   }) {
-    if (friends.isEmpty || totalAmount <= 0) {
+    if (friends.isEmpty ||
+        totalAmount <= 0 ||
+        totalAmount.isNaN ||
+        totalAmount.isInfinite) {
       return [];
     }
 
@@ -78,6 +84,9 @@ class SplitCalculator {
     final sharesPaise = <int>[];
 
     for (final f in friends) {
+      if (f.percentage.isNaN || f.percentage.isInfinite || f.percentage < 0) {
+        return [];
+      }
       final int allocated = (totalPaise * (f.percentage / 100.0)).round();
       sharesPaise.add(allocated);
     }
@@ -110,10 +119,13 @@ class SplitCalculator {
     required double totalAmount,
     required List<double> customAmounts,
   }) {
+    if (totalAmount <= 0 || totalAmount.isNaN || totalAmount.isInfinite) {
+      return 'Invalid total amount.';
+    }
     final int totalPaise = (totalAmount * 100).round();
     int sumPaise = 0;
     for (final amount in customAmounts) {
-      if (amount < 0) {
+      if (amount.isNaN || amount.isInfinite || amount < 0) {
         return 'Amounts cannot be negative.';
       }
       sumPaise += (amount * 100).round();

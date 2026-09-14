@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/expense_model.dart';
 import '../services/expense_service.dart';
+import '../utils/amount_parser.dart';
 import '../widgets/image/custom_cached_image.dart';
 import '../theme/app_theme.dart';
 
@@ -22,6 +24,7 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
   List<ExpenseModel> expenses = [];
   bool isLoading = true;
   String? currentUserId;
+  StreamSubscription<List<ExpenseModel>>? _expensesSubscription;
 
   final Map<String, IconData> categoryIcons = {
     'Food': Icons.restaurant_rounded,
@@ -52,9 +55,16 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
     _loadExpenses();
   }
 
+  @override
+  void dispose() {
+    _expensesSubscription?.cancel();
+    super.dispose();
+  }
+
   void _loadExpenses() {
     setState(() => isLoading = true);
-    ExpenseService.expensesStream(currentUserId!).listen(
+    _expensesSubscription?.cancel();
+    _expensesSubscription = ExpenseService.expensesStream(currentUserId!).listen(
       (data) {
         if (mounted) {
           setState(() {
@@ -686,6 +696,13 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
     }
   }
 
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
   Future<void> _pickImage(ImageSource source) async {
     try {
       final picked = await ImagePicker().pickImage(
@@ -758,10 +775,14 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
         }
       }
 
+      final parsedAmount =
+          AmountParser.parseAmount(_amountController.text.trim()) ??
+          double.parse(_amountController.text.trim());
+
       final expense = ExpenseModel(
         id: widget.expense?.id,
         userId: widget.userId,
-        amount: double.parse(_amountController.text.trim()),
+        amount: parsedAmount,
         category: _selectedCategory,
         description: _descController.text.trim(),
         expenseDate: _selectedDate,
@@ -843,7 +864,9 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                   if (val == null || val.trim().isEmpty) {
                     return 'Please enter amount';
                   }
-                  final parsed = double.tryParse(val.trim());
+                  final parsed =
+                      AmountParser.parseAmount(val.trim()) ??
+                      double.tryParse(val.trim());
                   if (parsed == null || parsed.isNaN || parsed.isInfinite) {
                     return 'Please enter a valid number';
                   }

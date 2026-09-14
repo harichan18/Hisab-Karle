@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../services/sync_service.dart';
 import '../../services/transaction_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/image/custom_cached_image.dart';
@@ -107,6 +108,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _logout(BuildContext context) async {
     FirebaseDataService.clearCachedSessionData();
+    SyncService.instance.reset();
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
 

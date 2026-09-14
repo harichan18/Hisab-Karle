@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/transaction_service.dart';
@@ -16,11 +17,18 @@ class DeletedTransactionsScreen extends StatefulWidget {
 class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
   List<DeletedEntryModel> deletedTransactions = [];
   bool isLoading = true;
+  StreamSubscription<List<DeletedEntryModel>>? _deletedSubscription;
 
   @override
   void initState() {
     super.initState();
     loadDeletedTransactions();
+  }
+
+  @override
+  void dispose() {
+    _deletedSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> loadDeletedTransactions() async {
@@ -30,8 +38,10 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
 
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      // Offline mode
-      final deleted = await DatabaseHelper.instance.getAllDeletedEntries();
+      // Offline mode: scoped to current user id if any
+      final deleted = await DatabaseHelper.instance.getAllDeletedEntries(
+        userId: currentUser?.uid,
+      );
       if (mounted) {
         setState(() {
           deletedTransactions = deleted;
@@ -39,15 +49,17 @@ class _DeletedTransactionsScreenState extends State<DeletedTransactionsScreen> {
         });
       }
     } else {
-      // Stream is used online, let's subscribe or load once.
-      FirebaseDataService.allDeletedEntriesStream().listen((deleted) {
-        if (mounted) {
-          setState(() {
-            deletedTransactions = deleted;
-            isLoading = false;
+      // Stream is used online, cancel previous and subscribe to new stream.
+      _deletedSubscription?.cancel();
+      _deletedSubscription =
+          FirebaseDataService.allDeletedEntriesStream().listen((deleted) {
+            if (mounted) {
+              setState(() {
+                deletedTransactions = deleted;
+                isLoading = false;
+              });
+            }
           });
-        }
-      });
     }
   }
 

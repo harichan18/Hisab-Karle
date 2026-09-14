@@ -12,6 +12,7 @@ import '../../database/database_helper.dart';
 import '../../models/transaction_model.dart';
 import '../../services/transaction_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/amount_parser.dart';
 import '../../widgets/image/receipt_attachment_section.dart';
 import '../share_payment_screen.dart';
 
@@ -88,7 +89,8 @@ class _AddPageState extends State<AddPage> {
     }
 
     final rawAmount = amountController.text.trim();
-    final parsedAmount = double.tryParse(rawAmount);
+    final parsedAmount =
+        AmountParser.parseAmount(rawAmount) ?? double.tryParse(rawAmount);
     if (parsedAmount == null ||
         parsedAmount <= 0 ||
         parsedAmount.isNaN ||

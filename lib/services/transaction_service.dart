@@ -165,7 +165,7 @@ class FirebaseDataService {
             peerUserId: uid,
           )
           .toFirestoreMap(),
-      'receiptPath': transaction.receiptPath ?? FieldValue.delete(),
+      'receiptPath': FieldValue.delete(), // Private local path of creator is never mirrored
       'receiptUrl': transaction.receiptUrl ?? FieldValue.delete(),
       'firebaseId': firebaseId,
       'peerUserId': uid,
