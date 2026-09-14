@@ -114,6 +114,7 @@ class PaymentOcrService {
   ExtractedPaymentInfo parseExtractedText(
     String rawText, {
     List<String>? lines,
+    DateTime? referenceDate,
   }) {
     final effectiveLines =
         lines ??
@@ -122,13 +123,18 @@ class PaymentOcrService {
             .map((e) => e.trim())
             .where((e) => e.isNotEmpty)
             .toList();
-    return _parsePaymentDetails(effectiveLines, rawText);
+    return _parsePaymentDetails(
+      effectiveLines,
+      rawText,
+      referenceDate: referenceDate,
+    );
   }
 
   ExtractedPaymentInfo _parsePaymentDetails(
     List<String> lines,
-    String rawText,
-  ) {
+    String rawText, {
+    DateTime? referenceDate,
+  }) {
     // Normalize any Devanagari numerals (०-९) across all lines and raw text to standard digits (0-9)
     final normalizedLines = lines
         .map((l) => AmountParser.normalizeNumerals(l))
@@ -159,7 +165,11 @@ class PaymentOcrService {
     );
 
     // 6. Extract Date
-    final dateResult = _extractDate(normalizedLines, normalizedRaw);
+    final dateResult = _extractDate(
+      normalizedLines,
+      normalizedRaw,
+      referenceDate: referenceDate,
+    );
 
     // 7. Extract Receiver / Merchant Name
     final receiverName = _extractReceiverName(normalizedLines, normalizedRaw);
@@ -888,12 +898,21 @@ class PaymentOcrService {
     return null;
   }
 
-  (DateTime?, String?) _extractDate(List<String> lines, String rawText) {
-    final now = DateTime.now();
+  (DateTime?, String?) _extractDate(
+    List<String> lines,
+    String rawText, {
+    DateTime? referenceDate,
+  }) {
+    final now = referenceDate ?? DateTime.now();
 
-    // Common formats: "11 Sep 2026", "11 September 26", "11/09/2026", "11-09-2026"
+    // Common formats: "11 Sep 2026", "11 Sept 2026", "11 September 26", "11/09/2026", "11-09-2026"
     final dateNamedMonthRegex = RegExp(
-      r'\b([0-3]?[0-9])\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s*,?\s*([12][0-9]{3}|[0-9]{2}))?\b',
+      r'\b([0-3]?[0-9])\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s*,?\s*([12][0-9]{3}|[0-9]{2}))?\b',
+      caseSensitive: false,
+    );
+
+    final monthFirstNamedRegex = RegExp(
+      r'\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+([0-3]?[0-9])(?:\s*,?\s*([12][0-9]{3}|[0-9]{2}))?\b',
       caseSensitive: false,
     );
 
@@ -908,6 +927,28 @@ class PaymentOcrService {
         final monthName = (match1.group(2) ?? '').toLowerCase();
         int year = now.year;
         final rawYear = match1.group(3);
+        if (rawYear != null) {
+          final parsedYear = int.tryParse(rawYear);
+          if (parsedYear != null) {
+            year = parsedYear < 100 ? (2000 + parsedYear) : parsedYear;
+          }
+        }
+        final month = _monthNumber(monthName);
+        try {
+          final dt = DateTime(year, month, day);
+          return (
+            dt,
+            '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}',
+          );
+        } catch (_) {}
+      }
+
+      final matchMonthFirst = monthFirstNamedRegex.firstMatch(line);
+      if (matchMonthFirst != null) {
+        final monthName = (matchMonthFirst.group(1) ?? '').toLowerCase();
+        final day = int.tryParse(matchMonthFirst.group(2) ?? '') ?? now.day;
+        int year = now.year;
+        final rawYear = matchMonthFirst.group(3);
         if (rawYear != null) {
           final parsedYear = int.tryParse(rawYear);
           if (parsedYear != null) {
@@ -942,7 +983,7 @@ class PaymentOcrService {
       }
     }
 
-    // Default to today
+    // Default to today (or provided referenceDate)
     final todayStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     return (now, todayStr);

@@ -295,7 +295,57 @@ UTR: 837870957272
         expect(result.receiverName?.toUpperCase(), contains('DIVYANSHU'));
       },
     );
+
+    // TEST 13: Deterministic fallback date when OCR has no date line
+    test(
+      'TEST 13: Fallback date uses referenceDate deterministically when no date in text',
+      () {
+        const rawText = '''
+Transaction Successful
+Paid to
+Rahul Sharma
+₹250
+''';
+        final fixedDate = DateTime(2025, 4, 15);
+        final result = PaymentOcrService.instance.parseExtractedText(
+          rawText,
+          referenceDate: fixedDate,
+        );
+        expect(result.status, PaymentStatus.successful);
+        expect(result.amount, 250.0);
+        expect(result.dateString, '2025-04-15');
+        expect(result.date, fixedDate);
+      },
+    );
+
+    // TEST 14: Month-first date formats (e.g., "Sept 11, 2026")
+    test(
+      'TEST 14: Month-first date format is recognized correctly',
+      () {
+        const rawText = '''
+Transaction Successful
+Sept 11, 2026 09:16 pm
+Paid to
+Rahul Sharma
+₹750
+''';
+        final result = PaymentOcrService.instance.parseExtractedText(rawText);
+        expect(result.amount, 750.0);
+        expect(result.dateString, '2026-09-11');
+      },
+    );
+
+    // TEST 15: Empty or unreadable OCR text returns unclear status safely
+    test(
+      'TEST 15: Empty or unreadable OCR text does not throw and returns unclear status',
+      () {
+        final result = PaymentOcrService.instance.parseExtractedText('');
+        expect(result.status, PaymentStatus.unclear);
+        expect(result.amount, isNull);
+      },
+    );
   });
+
 
   group('Indian Currency Formats and AmountParser Tests', () {
     test(
