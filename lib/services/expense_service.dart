@@ -139,4 +139,21 @@ class ExpenseService {
       await _firestoreRef.doc(expenseId).delete();
     }
   }
+
+  // Clear all personal expenses for user
+  static Future<void> clearExpenses(String userId) async {
+    await DatabaseHelper.instance.clearExpenses(userId: userId);
+    if (userId.isNotEmpty && userId != 'offline_user') {
+      try {
+        final snapshot = await _firestoreRef
+            .where('userId', isEqualTo: userId)
+            .get();
+        for (final doc in snapshot.docs) {
+          await doc.reference.delete();
+        }
+      } catch (e) {
+        debugPrint('[ExpenseService] Remote clear failed: $e');
+      }
+    }
+  }
 }

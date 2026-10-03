@@ -71,39 +71,49 @@ class FirebaseDataService {
       return null;
     }
 
-    final friendsCollection = FirebaseFirestore.instance.collection('friends');
-    final user1Docs = await friendsCollection
-        .where('user1', isEqualTo: uid)
-        .get();
-    final user2Docs = await friendsCollection
-        .where('user2', isEqualTo: uid)
-        .get();
+    try {
+      final friendsCollection = FirebaseFirestore.instance.collection('friends');
+      final user1Docs = await friendsCollection
+          .where('user1', isEqualTo: uid)
+          .get()
+          .timeout(const Duration(seconds: 2));
+      final user2Docs = await friendsCollection
+          .where('user2', isEqualTo: uid)
+          .get()
+          .timeout(const Duration(seconds: 2));
 
-    final friendUids = <String>{};
-    for (final doc in [...user1Docs.docs, ...user2Docs.docs]) {
-      final data = doc.data();
-      final user1 = data['user1'] as String? ?? '';
-      final user2 = data['user2'] as String? ?? '';
-      final friendUid = user1 == uid ? user2 : user1;
-      if (friendUid.isNotEmpty && friendUid != uid) {
-        friendUids.add(friendUid);
-      }
-    }
-
-    for (final friendUid in friendUids) {
-      final friendDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(friendUid)
-          .get();
-      final data = friendDoc.data();
-      if (data == null) {
-        continue;
+      final friendUids = <String>{};
+      for (final doc in [...user1Docs.docs, ...user2Docs.docs]) {
+        final data = doc.data();
+        final user1 = data['user1'] as String? ?? '';
+        final user2 = data['user2'] as String? ?? '';
+        final friendUid = user1 == uid ? user2 : user1;
+        if (friendUid.isNotEmpty && friendUid != uid) {
+          friendUids.add(friendUid);
+        }
       }
 
-      final displayName = (data['name'] as String? ?? '').trim().toLowerCase();
-      if (displayName == normalizedFriendName) {
-        return friendUid;
+      for (final friendUid in friendUids) {
+        final friendDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(friendUid)
+            .get()
+            .timeout(const Duration(seconds: 2));
+        final data = friendDoc.data();
+        if (data == null) {
+          continue;
+        }
+
+        final displayName = (data['name'] as String? ?? '').trim().toLowerCase();
+        if (displayName == normalizedFriendName) {
+          return friendUid;
+        }
       }
+    } catch (e) {
+      receiptLog(
+        'FirebaseDataService.resolvePeerUserIdByFriendName',
+        'Peer lookup offline/timeout: $e',
+      );
     }
 
     return null;
@@ -607,31 +617,40 @@ class FirebaseDataService {
   }
 
   static Future<void> updateSummary() async {
-    final txRef = transactionsRef;
-    final ref = summaryRef;
-    if (txRef == null || ref == null) {
-      return;
-    }
-
-    final transactions = await txRef.get();
-    double toGet = 0;
-    double toGive = 0;
-
-    for (final doc in transactions.docs) {
-      final data = doc.data();
-      final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
-      if (data['iGave'] == true) {
-        toGet += amount;
-      } else {
-        toGive += amount;
+    try {
+      final txRef = transactionsRef;
+      final ref = summaryRef;
+      if (txRef == null || ref == null) {
+        return;
       }
-    }
 
-    await ref.set({
-      'toGet': toGet,
-      'toGive': toGive,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      final transactions = await txRef
+          .get()
+          .timeout(const Duration(seconds: 2));
+      double toGet = 0;
+      double toGive = 0;
+
+      for (final doc in transactions.docs) {
+        final data = doc.data();
+        final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+        if (data['iGave'] == true) {
+          toGet += amount;
+        } else {
+          toGive += amount;
+        }
+      }
+
+      await ref.set({
+        'toGet': toGet,
+        'toGive': toGive,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      receiptLog(
+        'FirebaseDataService.updateSummary',
+        'Summary update offline/timeout: $e',
+      );
+    }
   }
 
   static Future<void> migrateSQLiteCacheToFirestoreIfNeeded() async {

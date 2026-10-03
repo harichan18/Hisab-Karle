@@ -1,13 +1,19 @@
+import 'dart:math';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/transaction_model.dart';
 import '../models/expense_model.dart';
+import '../models/friend_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
 
   static Database? _database;
+
+  static void setTestDatabase(Database? db) {
+    _database = db;
+  }
 
   DatabaseHelper._init();
 
@@ -29,7 +35,7 @@ class DatabaseHelper {
     return await openDatabase(
       path,
 
-      version: 9,
+      version: 11,
 
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -60,6 +66,8 @@ sync_status INTEGER DEFAULT 0
     await _createFriendNicknamesTable(db);
     await _createCachedFriendsTable(db);
     await _createPersonalExpensesTable(db);
+    await _createLocalFriendsTable(db);
+    await _createYouSplitSharesTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -104,6 +112,12 @@ sync_status INTEGER DEFAULT 0
       await db.execute(
         'ALTER TABLE deleted_entries ADD COLUMN receiptUrl TEXT',
       );
+    }
+    if (oldVersion < 10) {
+      await _createLocalFriendsTable(db);
+    }
+    if (oldVersion < 11) {
+      await _createYouSplitSharesTable(db);
     }
   }
 
@@ -213,10 +227,34 @@ value TEXT
     );
   }
 
+  static final Set<String> deletedFirebaseIds = {};
+
   Future<int> deleteTransaction(int id) async {
     final db = await instance.database;
-
+    final rows = await db.query(
+      'transactions',
+      columns: ['firebaseId'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final fid = rows.first['firebaseId'] as String?;
+      if (fid != null && fid.isNotEmpty) {
+        deletedFirebaseIds.add(fid);
+      }
+    }
     return await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteTransactionByFirebaseId(String firebaseId) async {
+    deletedFirebaseIds.add(firebaseId);
+    final db = await instance.database;
+    return await db.delete(
+      'transactions',
+      where: 'firebaseId = ?',
+      whereArgs: [firebaseId],
+    );
   }
 
   Future<int> deleteTransactionsForFriend(
@@ -234,11 +272,43 @@ value TEXT
       whereArgs.addAll([userId, userId]);
     }
 
+    final rows = await db.query(
+      'transactions',
+      columns: ['firebaseId'],
+      where: whereClause,
+      whereArgs: whereArgs,
+    );
+    for (final r in rows) {
+      final fid = r['firebaseId'] as String?;
+      if (fid != null && fid.isNotEmpty) {
+        deletedFirebaseIds.add(fid);
+      }
+    }
+
     return await db.delete(
       'transactions',
       where: whereClause,
       whereArgs: whereArgs,
     );
+  }
+
+  Future<void> clearEntryByFirebaseId(
+    String firebaseId, {
+    String? userId,
+  }) async {
+    deletedFirebaseIds.add(firebaseId);
+    final db = await instance.database;
+    final rows = await db.query(
+      'transactions',
+      columns: ['id'],
+      where: 'firebaseId = ?',
+      whereArgs: [firebaseId],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final entryId = rows.first['id'] as int;
+      await clearEntry(entryId, userId: userId);
+    }
   }
 
   Future<void> clearEntry(int entryId, {String? userId}) async {
@@ -477,6 +547,15 @@ nickname TEXT
     };
   }
 
+  Future<int> deleteFriendNickname(String friendName) async {
+    final db = await instance.database;
+    return await db.delete(
+      'friend_nicknames',
+      where: 'friendName = ?',
+      whereArgs: [friendName.trim().toLowerCase()],
+    );
+  }
+
   Future<void> _createCachedFriendsTable(Database db) async {
     await db.execute('''
 CREATE TABLE IF NOT EXISTS cached_friends(
@@ -543,6 +622,24 @@ CREATE TABLE IF NOT EXISTS cached_friends(
   Future<List<Map<String, dynamic>>> getAllCachedFriends() async {
     final db = await instance.database;
     return await db.query('cached_friends');
+  }
+
+  Future<int> deleteCachedFriend(String friendUid) async {
+    final db = await instance.database;
+    return await db.delete(
+      'cached_friends',
+      where: 'friendUid = ?',
+      whereArgs: [friendUid],
+    );
+  }
+
+  Future<int> deleteCachedFriendByName(String friendName) async {
+    final db = await instance.database;
+    return await db.delete(
+      'cached_friends',
+      where: 'LOWER(TRIM(friendName)) = ?',
+      whereArgs: [friendName.trim().toLowerCase()],
+    );
   }
 
   Future<List<TransactionModel>> getPendingTransactions({
@@ -680,5 +777,270 @@ CREATE TABLE IF NOT EXISTS personal_expenses(
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<int> clearExpenses({String? userId}) async {
+    final db = await instance.database;
+    if (userId != null && userId.isNotEmpty && userId != 'offline_user') {
+      return await db.delete(
+        'personal_expenses',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+    } else {
+      return await db.delete('personal_expenses');
+    }
+  }
+
+  // --- Local Friends ---
+
+  Future<void> _createLocalFriendsTable(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS local_friends(
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  userId TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+)
+''');
+  }
+
+  static String generateLocalId() {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    final rand = Random.secure().nextInt(0x7fffffff).toRadixString(16);
+    return 'local_${now}_$rand';
+  }
+
+  Future<int> insertLocalFriend(LocalFriendModel friend) async {
+    final db = await instance.database;
+    return await db.insert(
+      'local_friends',
+      friend.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<LocalFriendModel>> getLocalFriends({String? userId}) async {
+    final db = await instance.database;
+    final effectiveUserId = userId ?? '';
+    final String whereClause;
+    final List<dynamic> whereArgs;
+    if (effectiveUserId.isEmpty) {
+      whereClause = 'userId = ? OR userId IS NULL';
+      whereArgs = [''];
+    } else {
+      whereClause = 'userId = ?';
+      whereArgs = [effectiveUserId];
+    }
+    final result = await db.query(
+      'local_friends',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'name COLLATE NOCASE ASC',
+    );
+    return result.map((m) => LocalFriendModel.fromMap(m)).toList();
+  }
+
+  Future<LocalFriendModel?> getLocalFriendByName(
+    String name, {
+    String? userId,
+  }) async {
+    final db = await instance.database;
+    final effectiveUserId = userId ?? '';
+    final String whereClause;
+    final List<dynamic> whereArgs;
+    if (effectiveUserId.isEmpty) {
+      whereClause = 'LOWER(TRIM(name)) = ? AND (userId = ? OR userId IS NULL)';
+      whereArgs = [name.trim().toLowerCase(), ''];
+    } else {
+      whereClause = 'LOWER(TRIM(name)) = ? AND userId = ?';
+      whereArgs = [name.trim().toLowerCase(), effectiveUserId];
+    }
+    final result = await db.query(
+      'local_friends',
+      where: whereClause,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return LocalFriendModel.fromMap(result.first);
+  }
+
+  Future<int> deleteLocalFriend(String id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'local_friends',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteLocalFriendByName(
+    String name, {
+    String? userId,
+  }) async {
+    final db = await instance.database;
+    final effectiveUserId = userId ?? '';
+    final String whereClause;
+    final List<dynamic> whereArgs;
+    if (effectiveUserId.isEmpty) {
+      whereClause = 'LOWER(TRIM(name)) = ? AND (userId = ? OR userId IS NULL)';
+      whereArgs = [name.trim().toLowerCase(), ''];
+    } else {
+      whereClause = 'LOWER(TRIM(name)) = ? AND userId = ?';
+      whereArgs = [name.trim().toLowerCase(), effectiveUserId];
+    }
+    return await db.delete(
+      'local_friends',
+      where: whereClause,
+      whereArgs: whereArgs,
+    );
+  }
+
+  Future<int> updateLocalFriend(LocalFriendModel friend) async {
+    final db = await instance.database;
+    return await db.update(
+      'local_friends',
+      friend.toMap(),
+      where: 'id = ?',
+      whereArgs: [friend.id],
+    );
+  }
+
+  Future<void> adoptOrphanLocalFriends(String userId) async {
+    if (userId.isEmpty) return;
+    final db = await instance.database;
+    await db.update(
+      'local_friends',
+      {'userId': userId},
+      where: 'userId = ? OR userId IS NULL',
+      whereArgs: [''],
+    );
+  }
+
+  Future<void> migrateExistingFriendsToLocal({String? userId}) async {
+    final effectiveUserId = userId ?? '';
+    if (effectiveUserId.isNotEmpty) {
+      await adoptOrphanLocalFriends(effectiveUserId);
+    }
+    final txs = await getTransactions(userId: effectiveUserId);
+    final localFriends = await getLocalFriends(userId: effectiveUserId);
+    final existingNames = localFriends
+        .map((f) => f.name.trim().toLowerCase())
+        .toSet();
+
+    final cached = await getAllCachedFriends();
+    final cachedNames = cached
+        .map((c) => (c['friendName'] as String? ?? '').trim().toLowerCase())
+        .toSet();
+
+    final namesToMigrate = <String>{};
+    for (final tx in txs) {
+      final name = tx.friendName.trim();
+      if (name.isNotEmpty && name.toLowerCase() != 'you') {
+        namesToMigrate.add(name);
+      }
+    }
+
+    for (final name in namesToMigrate) {
+      final lower = name.toLowerCase();
+      if (!cachedNames.contains(lower) && !existingNames.contains(lower)) {
+        final now = DateTime.now();
+        final newFriend = LocalFriendModel(
+          id: generateLocalId(),
+          name: name,
+          userId: effectiveUserId,
+          createdAt: now,
+          updatedAt: now,
+        );
+        await insertLocalFriend(newFriend);
+        existingNames.add(lower);
+      }
+    }
+  }
+
+  // --- You Split Shares ---
+
+  Future<void> _createYouSplitSharesTable(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS you_split_shares(
+  id TEXT PRIMARY KEY,
+  userId TEXT NOT NULL,
+  amount REAL NOT NULL,
+  note TEXT,
+  date TEXT NOT NULL,
+  createdAt TEXT NOT NULL
+)
+''');
+  }
+
+  Future<int> insertYouSplitShare({
+    required String id,
+    required String userId,
+    required double amount,
+    String? note,
+    required String date,
+    required String createdAt,
+  }) async {
+    final db = await instance.database;
+    return await db.insert(
+      'you_split_shares',
+      {
+        'id': id,
+        'userId': userId,
+        'amount': amount,
+        'note': note,
+        'date': date,
+        'createdAt': createdAt,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getYouSplitShares({String? userId}) async {
+    final db = await instance.database;
+    final effectiveUserId = userId ?? '';
+    final String whereClause;
+    final List<dynamic> whereArgs;
+    if (effectiveUserId.isEmpty) {
+      whereClause = 'userId = ? OR userId IS NULL';
+      whereArgs = [''];
+    } else {
+      whereClause = 'userId = ?';
+      whereArgs = [effectiveUserId];
+    }
+    return await db.query(
+      'you_split_shares',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'createdAt DESC',
+    );
+  }
+
+  Future<double> getYouSplitTotal({String? userId}) async {
+    final shares = await getYouSplitShares(userId: userId);
+    return shares.fold<double>(
+      0.0,
+      (sum, item) => sum + ((item['amount'] as num?)?.toDouble() ?? 0.0),
+    );
+  }
+
+  Future<int> clearYouSplitShares({String? userId}) async {
+    final db = await instance.database;
+    final effectiveUserId = userId ?? '';
+    if (effectiveUserId.isEmpty) {
+      return await db.delete(
+        'you_split_shares',
+        where: 'userId = ? OR userId IS NULL',
+        whereArgs: [''],
+      );
+    } else {
+      return await db.delete(
+        'you_split_shares',
+        where: 'userId = ?',
+        whereArgs: [effectiveUserId],
+      );
+    }
   }
 }

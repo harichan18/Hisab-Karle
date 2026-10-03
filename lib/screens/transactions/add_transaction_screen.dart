@@ -254,7 +254,7 @@ class _AddPageState extends State<AddPage> {
             await FirebaseDataService.saveTransaction(
               localTx.copyWith(id: localId),
               firebaseId: firebaseId,
-            );
+            ).timeout(const Duration(seconds: 2));
             await DatabaseHelper.instance.updateTransactionSyncStatus(
               localId,
               SyncStatus.synced,
@@ -283,7 +283,7 @@ class _AddPageState extends State<AddPage> {
               await FirebaseDataService.saveTransaction(
                 updatedTx,
                 firebaseId: transaction.firebaseId,
-              );
+              ).timeout(const Duration(seconds: 2));
               await DatabaseHelper.instance.updateTransactionSyncStatus(
                 transaction.id!,
                 SyncStatus.synced,

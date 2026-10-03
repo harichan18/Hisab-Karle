@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:hisab_kitab/models/transaction_model.dart';
 import 'package:hisab_kitab/models/expense_model.dart';
 import 'package:hisab_kitab/services/sync_service.dart';
+import 'package:hisab_kitab/core/utils/transaction_display_helper.dart';
 
 void main() {
   setUpAll(() {
@@ -943,4 +944,475 @@ receiptPath TEXT
       },
     );
   });
+
+  group('Issue #1 — Offline Give/Take & Local-First Presentation Tests', () {
+    late Database db;
+
+    setUp(() async {
+      db = await openDatabase(
+        inMemoryDatabasePath,
+        version: 9,
+        onCreate: (db, version) async {
+          await db.execute('''
+CREATE TABLE transactions(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+firebaseId TEXT,
+createdBy TEXT,
+peerUserId TEXT,
+friendName TEXT,
+amount REAL,
+note TEXT,
+date TEXT,
+iGave INTEGER,
+receiptPath TEXT,
+receiptUrl TEXT,
+sync_status INTEGER DEFAULT 0
+);
+''');
+        },
+      );
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('TEST 1: Offline Give is saved locally as pending', () async {
+      final giveTx = TransactionModel(
+        firebaseId: 'offline_give_001',
+        friendName: 'Rohan',
+        amount: 500.0,
+        note: 'Lunch split',
+        date: '2026-10-03',
+        iGave: true,
+        syncStatus: SyncStatus.pending,
+        createdBy: 'user_offline_creator',
+      );
+
+      final localId = await db.insert('transactions', giveTx.toMap());
+      expect(localId, isPositive);
+
+      final rows = await db.query(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [localId],
+      );
+      expect(rows.length, 1);
+      final saved = TransactionModel.fromMap(rows.first);
+      expect(saved.syncStatus, SyncStatus.pending);
+      expect(saved.iGave, isTrue);
+      expect(saved.friendName, 'Rohan');
+      expect(saved.amount, 500.0);
+      expect(saved.createdBy, 'user_offline_creator');
+    });
+
+    test('TEST 2: Offline Take is saved locally as pending', () async {
+      final takeTx = TransactionModel(
+        firebaseId: 'offline_take_002',
+        friendName: 'Rohan',
+        amount: 300.0,
+        note: 'Repayment',
+        date: '2026-10-03',
+        iGave: false,
+        syncStatus: SyncStatus.pending,
+        createdBy: 'user_offline_creator',
+      );
+
+      final localId = await db.insert('transactions', takeTx.toMap());
+      expect(localId, isPositive);
+
+      final rows = await db.query(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [localId],
+      );
+      expect(rows.length, 1);
+      final saved = TransactionModel.fromMap(rows.first);
+      expect(saved.syncStatus, SyncStatus.pending);
+      expect(saved.iGave, isFalse);
+      expect(saved.friendName, 'Rohan');
+      expect(saved.amount, 300.0);
+      expect(saved.createdBy, 'user_offline_creator');
+    });
+
+    test('TEST 3: Pending offline Give appears on Home immediately', () async {
+      final giveTx = TransactionModel(
+        id: 1,
+        firebaseId: 'give_home_003',
+        friendName: 'Rohan',
+        amount: 500.0,
+        note: 'Tea',
+        date: '2026-10-03',
+        iGave: true,
+        syncStatus: SyncStatus.pending,
+        createdBy: 'user_home',
+      );
+      await db.insert('transactions', giveTx.toMap());
+
+      final localRows = await db.query('transactions');
+      final localTransactions =
+          localRows.map((r) => TransactionModel.fromMap(r)).toList();
+
+      // Home merges remote transactions with local transactions
+      final homeDisplayList = mergeTransactions(
+        remote: [],
+        local: localTransactions,
+      );
+
+      expect(homeDisplayList.length, 1);
+      expect(homeDisplayList.first.friendName, 'Rohan');
+      expect(homeDisplayList.first.amount, 500.0);
+      expect(homeDisplayList.first.iGave, isTrue);
+
+      // Home balance calculation immediately reflects the Give
+      final totalToGet = homeDisplayList
+          .where((t) => t.iGave)
+          .fold(0.0, (sum, t) => sum + t.amount);
+      expect(totalToGet, 500.0);
+    });
+
+    test('TEST 4: Pending offline Take appears on Home immediately', () async {
+      final takeTx = TransactionModel(
+        id: 2,
+        firebaseId: 'take_home_004',
+        friendName: 'Rohan',
+        amount: 300.0,
+        note: 'Coffee',
+        date: '2026-10-03',
+        iGave: false,
+        syncStatus: SyncStatus.pending,
+        createdBy: 'user_home',
+      );
+      await db.insert('transactions', takeTx.toMap());
+
+      final localRows = await db.query('transactions');
+      final localTransactions =
+          localRows.map((r) => TransactionModel.fromMap(r)).toList();
+
+      final homeDisplayList = mergeTransactions(
+        remote: [],
+        local: localTransactions,
+      );
+
+      expect(homeDisplayList.length, 1);
+      expect(homeDisplayList.first.friendName, 'Rohan');
+      expect(homeDisplayList.first.amount, 300.0);
+      expect(homeDisplayList.first.iGave, isFalse);
+
+      final totalToGive = homeDisplayList
+          .where((t) => !t.iGave)
+          .fold(0.0, (sum, t) => sum + t.amount);
+      expect(totalToGive, 300.0);
+    });
+
+    test(
+      'TEST 5: Firestore stream that does NOT contain the pending transaction does not erase it',
+      () async {
+        final pendingTx = TransactionModel(
+          id: 10,
+          firebaseId: 'pending_not_in_cloud',
+          friendName: 'Rohan',
+          amount: 500.0,
+          note: 'Offline dinner',
+          date: '2026-10-03',
+          iGave: true,
+          syncStatus: SyncStatus.pending,
+          createdBy: 'user_test',
+        );
+        await db.insert('transactions', pendingTx.toMap());
+
+        final localRows = await db.query('transactions');
+        final localTransactions =
+            localRows.map((r) => TransactionModel.fromMap(r)).toList();
+
+        // Remote Firestore stream emits existing synced transactions, lacking the new pending one
+        final remoteStreamData = [
+          TransactionModel(
+            firebaseId: 'already_synced_001',
+            friendName: 'Amit',
+            amount: 200.0,
+            note: 'Old synced lunch',
+            date: '2026-10-01',
+            iGave: true,
+            syncStatus: SyncStatus.synced,
+            createdBy: 'user_test',
+          ),
+        ];
+
+        final merged = mergeTransactions(
+          remote: remoteStreamData,
+          local: localTransactions,
+        );
+
+        // Must contain BOTH the remote synced item AND the local pending item
+        expect(merged.length, 2);
+        final rohanItem =
+            merged.firstWhere((t) => t.firebaseId == 'pending_not_in_cloud');
+        expect(rohanItem.friendName, 'Rohan');
+        expect(rohanItem.amount, 500.0);
+        expect(rohanItem.syncStatus, SyncStatus.pending);
+
+        final amitItem =
+            merged.firstWhere((t) => t.firebaseId == 'already_synced_001');
+        expect(amitItem.friendName, 'Amit');
+      },
+    );
+
+    test(
+      'TEST 6: Pending transaction remains visible after simulated offline restart/local reload',
+      () async {
+        final pendingTx = TransactionModel(
+          id: 20,
+          firebaseId: 'offline_restart_tx',
+          friendName: 'Rohan',
+          amount: 1000.0,
+          note: 'Offline loan',
+          date: '2026-10-03',
+          iGave: true,
+          syncStatus: SyncStatus.pending,
+          createdBy: 'user_test',
+        );
+        await db.insert('transactions', pendingTx.toMap());
+
+        // 1. Initial local load on app launch
+        final initialRows = await db.query('transactions');
+        final localInitial =
+            initialRows.map((r) => TransactionModel.fromMap(r)).toList();
+        var homeTransactions = mergeTransactions(
+          remote: [],
+          local: localInitial,
+        );
+        expect(homeTransactions.length, 1);
+        expect(homeTransactions.first.firebaseId, 'offline_restart_tx');
+
+        // 2. Realtime stream kicks in while offline, emitting empty cache snapshot
+        final offlineStreamData = <TransactionModel>[];
+        final reloadedRows = await db.query('transactions');
+        final localReloaded =
+            reloadedRows.map((r) => TransactionModel.fromMap(r)).toList();
+        homeTransactions = mergeTransactions(
+          remote: offlineStreamData,
+          local: localReloaded,
+        );
+
+        // Verify transaction is not wiped out
+        expect(homeTransactions.length, 1);
+        expect(homeTransactions.first.firebaseId, 'offline_restart_tx');
+        expect(homeTransactions.first.amount, 1000.0);
+      },
+    );
+
+    test('TEST 7: Person Detail displays a pending offline transaction', () async {
+      final rohanTx = TransactionModel(
+        id: 30,
+        firebaseId: 'person_detail_rohan_tx',
+        friendName: 'Rohan',
+        amount: 750.0,
+        note: 'Concert ticket',
+        date: '2026-10-03',
+        iGave: true,
+        syncStatus: SyncStatus.pending,
+        createdBy: 'user_test',
+      );
+      final amitTx = TransactionModel(
+        id: 31,
+        firebaseId: 'person_detail_amit_tx',
+        friendName: 'Amit',
+        amount: 250.0,
+        note: 'Snacks',
+        date: '2026-10-03',
+        iGave: false,
+        syncStatus: SyncStatus.pending,
+        createdBy: 'user_test',
+      );
+      await db.insert('transactions', rohanTx.toMap());
+      await db.insert('transactions', amitTx.toMap());
+
+      final rows = await db.query('transactions');
+      final allLocal = rows.map((r) => TransactionModel.fromMap(r)).toList();
+
+      final merged = mergeTransactions(remote: [], local: allLocal);
+      final rohanDetailTransactions = merged
+          .where((t) => t.friendName.trim().toLowerCase() == 'rohan')
+          .toList();
+
+      expect(rohanDetailTransactions.length, 1);
+      expect(rohanDetailTransactions.first.amount, 750.0);
+      expect(rohanDetailTransactions.first.syncStatus, SyncStatus.pending);
+      expect(rohanDetailTransactions.first.iGave, isTrue);
+    });
+
+    test(
+      'TEST 8: After SyncService marks the transaction synced, the UI does not show a duplicate',
+      () async {
+        const sharedId = 'idempotent_sync_tx_001';
+        final tx = TransactionModel(
+          id: 40,
+          firebaseId: sharedId,
+          friendName: 'Rohan',
+          amount: 500.0,
+          note: 'Dinner',
+          date: '2026-10-03',
+          iGave: true,
+          syncStatus: SyncStatus.pending,
+          createdBy: 'user_test',
+        );
+        final localId = await db.insert('transactions', tx.toMap());
+
+        // 1. Before sync: UI has 1 pending item
+        final rowsBefore = await db.query('transactions');
+        final listBefore =
+            rowsBefore.map((r) => TransactionModel.fromMap(r)).toList();
+        final uiBefore = mergeTransactions(remote: [], local: listBefore);
+        expect(uiBefore.length, 1);
+        expect(uiBefore.first.syncStatus, SyncStatus.pending);
+
+        // 2. SyncService completes sync: updates SQLite row to synced
+        await db.update(
+          'transactions',
+          {'sync_status': SyncStatus.synced},
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
+
+        // 3. Firestore stream emits the synced transaction
+        final remoteStreamData = [
+          TransactionModel(
+            firebaseId: sharedId,
+            friendName: 'Rohan',
+            amount: 500.0,
+            note: 'Dinner',
+            date: '2026-10-03',
+            iGave: true,
+            syncStatus: SyncStatus.synced,
+            createdBy: 'user_test',
+          ),
+        ];
+
+        // 4. UI merges remote and local
+        final rowsAfter = await db.query('transactions');
+        final listAfter =
+            rowsAfter.map((r) => TransactionModel.fromMap(r)).toList();
+        final uiAfter = mergeTransactions(
+          remote: remoteStreamData,
+          local: listAfter,
+        );
+
+        // Must show EXACTLY ONE transaction, no duplicate
+        expect(uiAfter.length, 1, reason: 'Duplicate transaction must not appear');
+        expect(uiAfter.first.firebaseId, sharedId);
+        expect(uiAfter.first.amount, 500.0);
+      },
+    );
+
+    test('TEST 9: Existing online Give behavior still works', () {
+      final onlineGive = TransactionModel(
+        firebaseId: 'online_give_doc',
+        friendName: 'Priya',
+        amount: 1200.0,
+        note: 'Shopping',
+        date: '2026-10-03',
+        iGave: true,
+        syncStatus: SyncStatus.synced,
+        createdBy: 'user_online',
+      );
+
+      final merged = mergeTransactions(
+        remote: [onlineGive],
+        local: [onlineGive],
+      );
+
+      expect(merged.length, 1);
+      expect(merged.first.iGave, isTrue);
+      expect(merged.first.amount, 1200.0);
+      expect(merged.first.friendName, 'Priya');
+    });
+
+    test('TEST 10: Existing online Take behavior still works', () {
+      final onlineTake = TransactionModel(
+        firebaseId: 'online_take_doc',
+        friendName: 'Priya',
+        amount: 600.0,
+        note: 'Dinner split',
+        date: '2026-10-03',
+        iGave: false,
+        syncStatus: SyncStatus.synced,
+        createdBy: 'user_online',
+      );
+
+      final merged = mergeTransactions(
+        remote: [onlineTake],
+        local: [onlineTake],
+      );
+
+      expect(merged.length, 1);
+      expect(merged.first.iGave, isFalse);
+      expect(merged.first.amount, 600.0);
+      expect(merged.first.friendName, 'Priya');
+    });
+
+    test(
+      'TEST 11: Transaction creator/ownership remains unchanged through the offline → sync lifecycle',
+      () async {
+        const creatorUid = 'creator_unique_uid_99';
+        final tx = TransactionModel(
+          id: 50,
+          firebaseId: 'ownership_lifecycle_tx',
+          friendName: 'Rohan',
+          amount: 450.0,
+          note: 'Cab fare',
+          date: '2026-10-03',
+          iGave: true,
+          syncStatus: SyncStatus.pending,
+          createdBy: creatorUid,
+        );
+
+        final localId = await db.insert('transactions', tx.toMap());
+
+        // Verify creator on offline save
+        final savedRows = await db.query(
+          'transactions',
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
+        expect(savedRows.first['createdBy'], creatorUid);
+
+        // Simulate sync: update status to synced
+        await db.update(
+          'transactions',
+          {'sync_status': SyncStatus.synced},
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
+
+        // Remote representation emitted by Firestore
+        final remoteDoc = TransactionModel(
+          firebaseId: 'ownership_lifecycle_tx',
+          friendName: 'Rohan',
+          amount: 450.0,
+          note: 'Cab fare',
+          date: '2026-10-03',
+          iGave: true,
+          syncStatus: SyncStatus.synced,
+          createdBy: creatorUid,
+        );
+
+        final rowsAfterSync = await db.query('transactions');
+        final localAfterSync =
+            rowsAfterSync.map((r) => TransactionModel.fromMap(r)).toList();
+        final uiResult = mergeTransactions(
+          remote: [remoteDoc],
+          local: localAfterSync,
+        );
+
+        expect(uiResult.length, 1);
+        expect(
+          uiResult.first.createdBy,
+          creatorUid,
+          reason: 'Ownership must be preserved through the entire lifecycle',
+        );
+      },
+    );
+  });
 }
+

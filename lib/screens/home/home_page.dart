@@ -80,7 +80,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   static bool _hasCheckedUpdate = false;
   List<TransactionModel> transactions = [];
+  List<TransactionModel>? _latestRemoteTransactions;
   List<FirestoreFriendProfile> firestoreFriends = [];
+  List<LocalFriendModel> _localFriends = [];
   Map<String, String> localNicknames = {};
   Map<String, Map<String, dynamic>> cachedFriendProfiles = {};
   DateTime? _lastFriendsSyncTime;
@@ -94,6 +96,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   List<ExpenseModel> _homeExpenses = [];
   StreamSubscription<List<ExpenseModel>>? _homeExpensesSubscription;
+
+  double _youSplitTotal = 0.0;
+  List<Map<String, dynamic>> _youSplitShares = [];
+
+  Future<void> loadYouSplitShares() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'offline_user';
+    final total = await DatabaseHelper.instance.getYouSplitTotal(userId: uid);
+    final shares = await DatabaseHelper.instance.getYouSplitShares(userId: uid);
+    if (!mounted) return;
+    setState(() {
+      _youSplitTotal = total;
+      _youSplitShares = shares;
+    });
+  }
 
   double get todayHomeSpending {
     final now = DateTime.now();
@@ -118,6 +134,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         .fold(0.0, (acc, e) => acc + e.amount);
   }
 
+  double get totalPersonalExpense {
+    return _homeExpenses.fold(0.0, (acc, e) => acc + e.amount);
+  }
+
   Future<void> loadExpenses() async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? 'offline_user';
     final data = await ExpenseService.getExpensesOnce(uid);
@@ -135,6 +155,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       localNicknames = nicks;
+    });
+  }
+
+  Future<void> loadLocalFriends() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    await DatabaseHelper.instance.migrateExistingFriendsToLocal(userId: uid);
+    final friends = await DatabaseHelper.instance.getLocalFriends(userId: uid);
+    if (!mounted) return;
+    setState(() {
+      _localFriends = friends;
     });
   }
 
@@ -248,11 +278,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> loadData() async {
     await loadLocalNicknames();
+    await loadLocalFriends();
     await Future.wait([
       loadTransactions(),
       loadBankBalance(),
       loadCachedFriendProfiles(),
       loadExpenses(),
+      loadYouSplitShares(),
     ]);
 
     if (FirebaseAuth.instance.currentUser != null) {
@@ -580,21 +612,34 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     _transactionsSubscription = FirebaseDataService.transactionsStream().listen((
       data,
-    ) {
+    ) async {
       if (!mounted) {
         return;
       }
-      bool changed = transactions.length != data.length;
+      _latestRemoteTransactions = List<TransactionModel>.from(data);
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final localData = await DatabaseHelper.instance.getTransactions(userId: uid);
+      final activeRemote = _latestRemoteTransactions!
+          .where((t) =>
+              t.firebaseId == null ||
+              !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId))
+          .toList();
+      final merged = mergeTransactions(
+        remote: activeRemote,
+        local: localData,
+      );
+      bool changed = transactions.length != merged.length;
       if (!changed) {
         for (int i = 0; i < transactions.length; i++) {
-          if (transactions[i].id != data[i].id ||
-              transactions[i].firebaseId != data[i].firebaseId ||
-              transactions[i].amount != data[i].amount ||
-              transactions[i].note != data[i].note ||
-              transactions[i].date != data[i].date ||
-              transactions[i].iGave != data[i].iGave ||
-              transactions[i].receiptPath != data[i].receiptPath ||
-              transactions[i].receiptUrl != data[i].receiptUrl) {
+          if (transactions[i].id != merged[i].id ||
+              transactions[i].firebaseId != merged[i].firebaseId ||
+              transactions[i].amount != merged[i].amount ||
+              transactions[i].note != merged[i].note ||
+              transactions[i].date != merged[i].date ||
+              transactions[i].iGave != merged[i].iGave ||
+              transactions[i].syncStatus != merged[i].syncStatus ||
+              transactions[i].receiptPath != merged[i].receiptPath ||
+              transactions[i].receiptUrl != merged[i].receiptUrl) {
             changed = true;
             break;
           }
@@ -602,10 +647,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
       if (changed) {
         setState(() {
-          transactions = data;
+          transactions = merged;
         });
         debugPrint(
-          '[Home] [Firestore Stream] transactions snapshot loaded: ${data.length} items',
+          '[Home] [Firestore Stream] transactions merged: ${merged.length} items',
         );
         debugPrint('[Home] total friends loaded: ${visibleFriends.length}');
       }
@@ -644,16 +689,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!mounted) {
       return;
     }
-    final reversedData = data.reversed.toList();
-    bool changed = transactions.length != reversedData.length;
+    final activeRemote = (_latestRemoteTransactions ?? const [])
+        .where((t) =>
+            t.firebaseId == null ||
+            !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId))
+        .toList();
+    final merged = mergeTransactions(
+      remote: activeRemote,
+      local: data,
+    );
+    bool changed = transactions.length != merged.length;
     if (!changed) {
       for (int i = 0; i < transactions.length; i++) {
-        if (transactions[i].id != reversedData[i].id ||
-            transactions[i].amount != reversedData[i].amount ||
-            transactions[i].note != reversedData[i].note ||
-            transactions[i].date != reversedData[i].date ||
-            transactions[i].iGave != reversedData[i].iGave ||
-            transactions[i].receiptPath != reversedData[i].receiptPath) {
+        if (transactions[i].id != merged[i].id ||
+            transactions[i].firebaseId != merged[i].firebaseId ||
+            transactions[i].amount != merged[i].amount ||
+            transactions[i].note != merged[i].note ||
+            transactions[i].date != merged[i].date ||
+            transactions[i].iGave != merged[i].iGave ||
+            transactions[i].syncStatus != merged[i].syncStatus ||
+            transactions[i].receiptPath != merged[i].receiptPath ||
+            transactions[i].receiptUrl != merged[i].receiptUrl) {
           changed = true;
           break;
         }
@@ -661,10 +717,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     if (changed) {
       debugPrint(
-        '[Home] [SQLite Load] Overwriting transactions list: ${reversedData.length} items',
+        '[Home] [SQLite Load] Updating transactions list: ${merged.length} items',
       );
       setState(() {
-        transactions = reversedData;
+        transactions = merged;
       });
     }
   }
@@ -695,8 +751,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _lastDashboardRefreshTime = now;
 
     await loadLocalNicknames();
+    await loadLocalFriends();
+    await loadTransactions();
+    await loadExpenses();
+    await loadYouSplitShares();
     if (FirebaseAuth.instance.currentUser == null) {
-      await Future.wait([loadTransactions(), loadBankBalance()]);
+      await loadBankBalance();
     } else {
       await loadFirestoreFriends();
     }
@@ -1394,13 +1454,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final items = <FriendListItem>[];
     final existingNames = <String>{};
 
+    // 1. Local persistent friends
+    for (final lf in _localFriends) {
+      final key = lf.name.trim().toLowerCase();
+      if (key.isEmpty || existingNames.contains(key)) continue;
+      final nickname = localNicknames[key];
+      items.add(FriendListItem(
+        name: lf.name,
+        localId: lf.id,
+        isLocal: true,
+        nickname: nickname,
+      ));
+      existingNames.add(key);
+    }
+
+    // 2. Legacy transaction names where required for backward compatibility
     for (final friendName in uniqueFriends) {
       final key = friendName.trim().toLowerCase();
+      if (key.isEmpty || existingNames.contains(key)) continue;
       final nickname = localNicknames[key];
       items.add(FriendListItem(name: friendName, nickname: nickname));
       existingNames.add(key);
     }
 
+    // 3. Connected Firebase friends
     for (final firestoreFriend in firestoreFriends) {
       final displayName = firestoreFriend.displayName;
       final key = displayName.toLowerCase();
@@ -1412,6 +1489,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (index != -1) {
           items[index] = FriendListItem(
             name: items[index].name,
+            localId: items[index].localId,
+            isLocal: items[index].isLocal,
             uid: firestoreFriend.uid,
             email: firestoreFriend.email,
             friendCode: firestoreFriend.friendCode,
@@ -1478,6 +1557,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return totalGivenForFriend(friendName) - totalTakenForFriend(friendName);
   }
 
+  bool _friendMatches(
+    TransactionModel t,
+    String friendName,
+    String? friendUid,
+  ) {
+    final lowerTarget = friendName.trim().toLowerCase();
+    if (t.friendName.trim().toLowerCase() == lowerTarget) {
+      return true;
+    }
+    if (_transactionDisplayFriendName(t).trim().toLowerCase() == lowerTarget) {
+      return true;
+    }
+    if (friendUid != null && friendUid.isNotEmpty && t.peerUserId == friendUid) {
+      return true;
+    }
+    return false;
+  }
+
   Future<void> deleteEntireFriend(FriendListItem friend) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1509,16 +1606,71 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
 
-    if (FirebaseAuth.instance.currentUser == null) {
-      await DatabaseHelper.instance.deleteTransactionsForFriend(friend.name);
-      await DatabaseHelper.instance.deleteDeletedEntriesForFriend(friend.name);
-    } else {
-      await FirebaseDataService.deleteFriendData(
-        friendName: friend.name,
-        friendUid: friend.uid,
-      );
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    // 1. Unconditionally delete from SQLite
+    if (friend.localId != null && friend.localId!.isNotEmpty) {
+      await DatabaseHelper.instance.deleteLocalFriend(friend.localId!);
+    }
+    await DatabaseHelper.instance.deleteLocalFriendByName(
+      friend.name,
+      userId: uid,
+    );
+    await DatabaseHelper.instance.deleteLocalFriendByName(friend.name);
+    await DatabaseHelper.instance.deleteTransactionsForFriend(
+      friend.name,
+      userId: uid,
+    );
+    await DatabaseHelper.instance.deleteTransactionsForFriend(friend.name);
+    await DatabaseHelper.instance.deleteDeletedEntriesForFriend(friend.name);
+    if (friend.uid != null && friend.uid!.isNotEmpty) {
+      await DatabaseHelper.instance.deleteCachedFriend(friend.uid!);
+    }
+    await DatabaseHelper.instance.deleteCachedFriendByName(friend.name);
+    await DatabaseHelper.instance.deleteFriendNickname(friend.name);
+
+    // 2. Attempt cloud deletion only for actual connected Firebase data
+    if (FirebaseAuth.instance.currentUser != null &&
+        (friend.fromFirestore || (friend.uid != null && friend.uid!.isNotEmpty))) {
+      try {
+        await FirebaseDataService.deleteFriendData(
+          friendName: friend.name,
+          friendUid: friend.uid,
+        );
+      } catch (e) {
+        debugPrint('[Home] Error deleting friend data in cloud: $e');
+      }
     }
 
+    // 3. Immediately prune in-memory state
+    if (mounted) {
+      setState(() {
+        _localFriends.removeWhere(
+          (lf) =>
+              (friend.localId != null && lf.id == friend.localId) ||
+              lf.name.trim().toLowerCase() == friend.name.trim().toLowerCase(),
+        );
+        transactions.removeWhere(
+          (t) => _friendMatches(t, friend.name, friend.uid),
+        );
+        _latestRemoteTransactions?.removeWhere(
+          (t) => _friendMatches(t, friend.name, friend.uid),
+        );
+        firestoreFriends.removeWhere(
+          (f) =>
+              (friend.uid != null &&
+                  friend.uid!.isNotEmpty &&
+                  f.uid == friend.uid) ||
+              f.name.trim().toLowerCase() == friend.name.trim().toLowerCase(),
+        );
+        if (friend.uid != null && friend.uid!.isNotEmpty) {
+          cachedFriendProfiles.remove(friend.uid);
+        }
+        localNicknames.remove(friend.name.trim().toLowerCase());
+      });
+    }
+
+    _lastDashboardRefreshTime = null;
     await refreshDashboard();
   }
 
@@ -1704,7 +1856,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   await FirebaseDataService.saveTransaction(
                     localTx.copyWith(id: localId),
                     firebaseId: firebaseId,
-                  );
+                  ).timeout(const Duration(seconds: 2));
                   await DatabaseHelper.instance.updateTransactionSyncStatus(
                     localId,
                     SyncStatus.synced,
@@ -1964,6 +2116,369 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         );
       }),
+    );
+  }
+
+  Future<void> _confirmClearYouSplitShares() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear Split Shares?'),
+        content: const Text(
+          'Are you sure you want to clear your bill split shares? This will reset your split share balance to ₹0.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Clear', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? 'offline_user';
+      await DatabaseHelper.instance.clearYouSplitShares(userId: uid);
+      await loadYouSplitShares();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Split shares cleared.')),
+        );
+      }
+    }
+  }
+
+  void _showYouSplitSummarySheet(BuildContext context, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[700] : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Your Bill Split Shares",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? AppColors.textPrimaryDark
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      "₹${formatAmount(_youSplitTotal)}",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF6366F1),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_youSplitShares.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: Text(
+                        "No active split shares.",
+                        style: TextStyle(
+                          color: isDark
+                              ? AppColors.textSecondaryDark
+                              : AppColors.textSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _youSplitShares.length,
+                      separatorBuilder: (context, index) => Divider(
+                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        height: 1,
+                      ),
+                      itemBuilder: (context, index) {
+                        final share = _youSplitShares[index];
+                        final shareAmount =
+                            (share['amount'] as num?)?.toDouble() ?? 0.0;
+                        final note =
+                            share['note'] as String? ?? 'OCR Bill Split';
+                        final date = share['date'] as String? ?? '';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      note.isNotEmpty ? note : 'OCR Bill Split',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                        color: isDark
+                                            ? AppColors.textPrimaryDark
+                                            : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    if (date.isNotEmpty)
+                                      Text(
+                                        date,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark
+                                              ? AppColors.textSecondaryDark
+                                              : AppColors.textSecondary,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                "₹${formatAmount(shareAmount)}",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: isDark
+                                      ? AppColors.textPrimaryDark
+                                      : AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildYouCard(bool isDark, User? currentUser) {
+    final amount = _youSplitTotal;
+    final photoUrl = currentUser?.photoURL;
+
+    return Container(
+      key: const Key('home_you_card'),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.surfaceDark : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF3F3F46)
+              : const Color(0xFFE4E4E7),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: isDark ? 0.2 : 0.02,
+            ),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          _showYouSplitSummarySheet(context, isDark);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 12,
+          ),
+          child: Row(
+            children: [
+              if (photoUrl != null && photoUrl.isNotEmpty)
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.transparent,
+                  child: ClipOval(
+                    child: CustomCachedImage(
+                      url: photoUrl,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                )
+              else
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: isDark
+                      ? const Color(0xFF312E81).withValues(alpha: 0.5)
+                      : const Color(0xFFEEF2FF),
+                  child: const Text(
+                    "You",
+                    style: TextStyle(
+                      color: Color(0xFF6366F1),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            "You",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: isDark
+                                  ? AppColors.textPrimaryDark
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF27272A)
+                                : const Color(0xFFF4F4F5),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: isDark
+                                  ? const Color(0xFF3F3F46)
+                                  : const Color(0xFFE4E4E7),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            "Split Share",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? AppColors.textSecondaryDark
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Text(
+                          "₹${formatAmount(amount)}",
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.textSecondaryDark
+                                : AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          amount == 0 ? "• Settled" : "• Active",
+                          style: TextStyle(
+                            color: amount == 0
+                                ? (isDark
+                                    ? AppColors.textSecondaryDark
+                                    : AppColors.settledText)
+                                : const Color(0xFF818CF8),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Clear action (strictly NO + or - buttons!)
+              TextButton(
+                key: const Key('you_clear_button'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  backgroundColor: isDark
+                      ? const Color(0xFF27272A)
+                      : const Color(0xFFF4F4F5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: isDark
+                          ? const Color(0xFF3F3F46)
+                          : const Color(0xFFE4E4E7),
+                      width: 0.8,
+                    ),
+                  ),
+                ),
+                onPressed: () => _confirmClearYouSplitShares(),
+                child: Text(
+                  "Clear",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? AppColors.textPrimaryDark
+                        : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -2704,25 +3219,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 // Friends List as part of the continuous vertical scroll!
                 if (_isInitialLoad)
                   _buildShimmerList()
-                else if (friends.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                      child: Text(
-                        _selectedFilter == 'All'
-                            ? "No friends added yet. Tap '+' to add a transaction."
-                            : "No friends found under '$_selectedFilter'.",
-                        style: TextStyle(
-                          color: isDark
-                              ? AppColors.textSecondaryDark
-                              : AppColors.textSecondary,
-                          fontSize: 13,
+                else ...[
+                  if (_selectedFilter == 'All' ||
+                      (_selectedFilter == 'Settled' && _youSplitTotal == 0))
+                    _buildYouCard(isDark, currentUser),
+                  if (friends.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: Text(
+                          _selectedFilter == 'All'
+                              ? "No friends added yet. Tap '+' to add a transaction."
+                              : "No friends found under '$_selectedFilter'.",
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.textSecondaryDark
+                                : AppColors.textSecondary,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
-                    ),
-                  )
-                else
-                  ...friends.map((friend) {
+                    )
+                  else
+                    ...friends.map((friend) {
                     final friendName = friend.name;
                     final balance = getFriendBalance(friendName);
                     final String status;
@@ -2773,6 +3292,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               ),
                             ),
                           );
+                          _lastDashboardRefreshTime = null;
                           await refreshDashboard();
                         },
                         onLongPress: () {
@@ -2915,6 +3435,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ),
                     );
                   }),
+                ],
               ],
             ),
           ),

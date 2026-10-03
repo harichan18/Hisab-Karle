@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,12 +16,15 @@ import '../services/transaction_service.dart';
 import 'friends/add_friend_page.dart';
 
 typedef FriendRecord = ({
+  String id,
   String name,
-  String uid,
+  String? firebaseUid,
   String? email,
   String? friendCode,
   String? upiId,
   String? mobileNumber,
+  bool isYou,
+  bool isLocal,
 });
 
 class SharePaymentScreen extends StatefulWidget {
@@ -99,10 +103,83 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       final currentUser = FirebaseAuth.instance.currentUser;
       final currentUid = currentUser?.uid;
 
-      // Unique map keyed by Firebase UID to guarantee no duplicates or fake fallback users
-      final friendMap = <String, FriendRecord>{};
+      final list = <FriendRecord>[];
+      final seenKeys = <String>{};
 
-      // 1. Fetch from cached_friends in SQLite
+      // 1. "You" - always at top, selected by default, never a Home friend card
+      list.add((
+        id: '__you__',
+        name: 'You',
+        firebaseUid: null,
+        email: null,
+        friendCode: null,
+        upiId: null,
+        mobileNumber: null,
+        isYou: true,
+        isLocal: false,
+      ));
+      seenKeys.add('__you__');
+      seenKeys.add('you');
+
+      // Adopt any offline/orphan local friends to the authenticated user
+      if (currentUid != null && currentUid.isNotEmpty) {
+        await DatabaseHelper.instance.adoptOrphanLocalFriends(currentUid);
+      }
+      // Migrate distinct legacy transaction friend names into local_friends
+      await DatabaseHelper.instance.migrateExistingFriendsToLocal(
+        userId: currentUid,
+      );
+
+      // 2. Local persistent friends from SQLite
+      final localFriends = await DatabaseHelper.instance.getLocalFriends(
+        userId: currentUid,
+      );
+      final localList = <FriendRecord>[];
+      for (final lf in localFriends) {
+        final key = lf.name.trim().toLowerCase();
+        if (seenKeys.contains(key)) continue;
+        localList.add((
+          id: lf.id,
+          name: lf.name,
+          firebaseUid: null,
+          email: null,
+          friendCode: null,
+          upiId: null,
+          mobileNumber: null,
+          isYou: false,
+          isLocal: true,
+        ));
+        seenKeys.add(key);
+        seenKeys.add(lf.id);
+      }
+
+      // Also include any distinct friend names from transactions for backward compatibility
+      final txs = await DatabaseHelper.instance.getTransactions(
+        userId: currentUid ?? '',
+      );
+      for (final tx in txs) {
+        final name = tx.friendName.trim();
+        final key = name.toLowerCase();
+        if (key.isEmpty || key == 'you' || seenKeys.contains(key)) continue;
+        localList.add((
+          id: DatabaseHelper.personIdForName(name).toString(),
+          name: name,
+          firebaseUid: null,
+          email: null,
+          friendCode: null,
+          upiId: null,
+          mobileNumber: null,
+          isYou: false,
+          isLocal: true,
+        ));
+        seenKeys.add(key);
+      }
+
+      localList.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      list.addAll(localList);
+
+      // 3. Connected Firebase friends from SQLite cache and Firestore
+      final connectedMap = <String, FriendRecord>{};
       final cachedRows = await DatabaseHelper.instance.getAllCachedFriends();
       for (final row in cachedRows) {
         final uid = (row['friendUid'] as String? ?? '').trim();
@@ -112,22 +189,26 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         final upiId = (row['upiId'] as String? ?? '').trim();
         final mobileNumber = (row['mobileNumber'] as String? ?? '').trim();
 
-        // Must have a valid UID and MUST NOT be the currently authenticated user
         if (uid.isNotEmpty && (currentUid == null || uid != currentUid)) {
-          friendMap[uid] = (
-            name: name.isNotEmpty
-                ? name
-                : (friendCode.isNotEmpty ? friendCode : 'Friend'),
-            uid: uid,
-            email: email.isNotEmpty ? email : null,
-            friendCode: friendCode.isNotEmpty ? friendCode : null,
-            upiId: upiId.isNotEmpty ? upiId : null,
-            mobileNumber: mobileNumber.isNotEmpty ? mobileNumber : null,
-          );
+          final key = name.isNotEmpty ? name.toLowerCase() : uid;
+          if (!seenKeys.contains(key) && !seenKeys.contains(uid)) {
+            connectedMap[uid] = (
+              id: uid,
+              name: name.isNotEmpty
+                  ? name
+                  : (friendCode.isNotEmpty ? friendCode : 'Friend'),
+              firebaseUid: uid,
+              email: email.isNotEmpty ? email : null,
+              friendCode: friendCode.isNotEmpty ? friendCode : null,
+              upiId: upiId.isNotEmpty ? upiId : null,
+              mobileNumber: mobileNumber.isNotEmpty ? mobileNumber : null,
+              isYou: false,
+              isLocal: false,
+            );
+          }
         }
       }
 
-      // 2. Query Firestore directly if authenticated to ensure fresh friendship state
       if (currentUid != null && currentUid.isNotEmpty) {
         try {
           final friendsCol = FirebaseFirestore.instance.collection('friends');
@@ -156,7 +237,8 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
           }
 
           for (final fUid in friendUids) {
-            if (!friendMap.containsKey(fUid) || friendMap[fUid]!.name.isEmpty) {
+            if (!connectedMap.containsKey(fUid) ||
+                connectedMap[fUid]!.name.isEmpty) {
               try {
                 final userDoc = await FirebaseFirestore.instance
                     .collection('users')
@@ -168,23 +250,28 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                   final fEmail = (data['email'] as String? ?? '').trim();
                   final fCode = (data['friendCode'] as String? ?? '').trim();
                   final fUpi = (data['upiId'] as String? ?? '').trim();
-                  final fMobile = (data['mobileNumber'] as String? ?? '')
-                      .trim();
+                  final fMobile = (data['mobileNumber'] as String? ?? '').trim();
 
                   final resolvedName = fName.isNotEmpty
                       ? fName
                       : (fCode.isNotEmpty
-                            ? fCode
-                            : (fEmail.isNotEmpty ? fEmail : 'Friend'));
+                          ? fCode
+                          : (fEmail.isNotEmpty ? fEmail : 'Friend'));
 
-                  friendMap[fUid] = (
-                    name: resolvedName,
-                    uid: fUid,
-                    email: fEmail.isNotEmpty ? fEmail : null,
-                    friendCode: fCode.isNotEmpty ? fCode : null,
-                    upiId: fUpi.isNotEmpty ? fUpi : null,
-                    mobileNumber: fMobile.isNotEmpty ? fMobile : null,
-                  );
+                  final key = resolvedName.toLowerCase();
+                  if (!seenKeys.contains(key) && !seenKeys.contains(fUid)) {
+                    connectedMap[fUid] = (
+                      id: fUid,
+                      name: resolvedName,
+                      firebaseUid: fUid,
+                      email: fEmail.isNotEmpty ? fEmail : null,
+                      friendCode: fCode.isNotEmpty ? fCode : null,
+                      upiId: fUpi.isNotEmpty ? fUpi : null,
+                      mobileNumber: fMobile.isNotEmpty ? fMobile : null,
+                      isYou: false,
+                      isLocal: false,
+                    );
+                  }
 
                   await DatabaseHelper.instance.saveCachedFriend(
                     friendUid: fUid,
@@ -208,16 +295,29 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         }
       }
 
-      // DO NOT query local transactions table to synthesize fake/temporary friends.
-      // Friends must strictly be genuine verified friends.
-      final list = friendMap.values.toList()
+      final connectedList = connectedMap.values.toList()
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      list.addAll(connectedList);
 
       if (mounted) {
         setState(() {
           _allFriends = list;
           _filteredFriends = _applySearchFilter(_searchController.text, list);
+
+          // "You" is selected by default
+          if (!_selectedFriendUids.contains('__you__')) {
+            _selectedFriendUids.add('__you__');
+            _customControllers.putIfAbsent(
+              '__you__',
+              () => TextEditingController(),
+            );
+            _percentageControllers.putIfAbsent(
+              '__you__',
+              () => TextEditingController(),
+            );
+          }
         });
+        _syncSplitInputs();
         _matchSuggestedReceiver();
       }
     } catch (e) {
@@ -331,10 +431,11 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       return;
     }
 
+    final candidateFriends = _allFriends.where((f) => !f.isYou).toList();
     final matches = ReceiverMatcher.matchReceiver<FriendRecord>(
       receiverName: receiver,
       upiId: upi,
-      friends: _allFriends,
+      friends: candidateFriends,
       getName: (f) => f.name,
       getUpiId: (f) => f.upiId,
       getFriendCode: (f) => f.friendCode,
@@ -343,31 +444,40 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     if (mounted) {
       setState(() {
         _matchedCandidates = matches;
-        // If there is exactly ONE high-confidence match and nothing is selected yet,
-        // safely pre-suggest/select it for convenience
         if (matches.isNotEmpty &&
             matches.first.confidence == MatchConfidence.high &&
-            (matches.length == 1 || matches[1].score < matches.first.score) &&
-            _selectedFriendUids.isEmpty) {
-          _selectedFriendUids.add(matches.first.friend.uid);
-          _syncSplitInputs();
+            (matches.length == 1 || matches[1].score < matches.first.score)) {
+          final matchedId = matches.first.friend.id;
+          final nonYouSelected = _selectedFriendUids.where((id) => id != '__you__');
+          if (nonYouSelected.isEmpty) {
+            _selectedFriendUids.add(matchedId);
+            _customControllers.putIfAbsent(
+              matchedId,
+              () => TextEditingController(),
+            );
+            _percentageControllers.putIfAbsent(
+              matchedId,
+              () => TextEditingController(),
+            );
+            _syncSplitInputs();
+          }
         }
       });
     }
   }
 
-  void _toggleFriendSelection(String uid) {
+  void _toggleFriendSelection(String id) {
     setState(() {
-      if (_selectedFriendUids.contains(uid)) {
-        _selectedFriendUids.remove(uid);
-        _customControllers[uid]?.dispose();
-        _customControllers.remove(uid);
-        _percentageControllers[uid]?.dispose();
-        _percentageControllers.remove(uid);
+      if (_selectedFriendUids.contains(id)) {
+        _selectedFriendUids.remove(id);
+        _customControllers[id]?.dispose();
+        _customControllers.remove(id);
+        _percentageControllers[id]?.dispose();
+        _percentageControllers.remove(id);
       } else {
-        _selectedFriendUids.add(uid);
-        _customControllers[uid] = TextEditingController();
-        _percentageControllers[uid] = TextEditingController();
+        _selectedFriendUids.add(id);
+        _customControllers[id] = TextEditingController();
+        _percentageControllers[id] = TextEditingController();
       }
       _syncSplitInputs();
     });
@@ -378,14 +488,14 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     if (_selectedFriendUids.isEmpty || totalAmount <= 0) return;
 
     final selected = _allFriends
-        .where((f) => _selectedFriendUids.contains(f.uid))
+        .where((f) => _selectedFriendUids.contains(f.id))
         .toList();
 
     if (_splitType == SplitType.equal) {
       final shares = SplitCalculator.calculateEqualSplit(
         totalAmount: totalAmount,
         friends: selected
-            .map((f) => (name: f.name, uid: f.uid as String?))
+            .map((f) => (name: f.name, uid: f.id as String?))
             .toList(),
       );
       for (final s in shares) {
@@ -398,8 +508,8 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     } else if (_splitType == SplitType.percentage) {
       final equalPct = (100.0 / selected.length).toStringAsFixed(1);
       for (final f in selected) {
-        if (_percentageControllers[f.uid]?.text.isEmpty ?? true) {
-          _percentageControllers[f.uid]?.text = equalPct;
+        if (_percentageControllers[f.id]?.text.isEmpty ?? true) {
+          _percentageControllers[f.id]?.text = equalPct;
         }
       }
     }
@@ -410,7 +520,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     if (totalAmount <= 0 || _selectedFriendUids.isEmpty) return [];
 
     final selected = _allFriends
-        .where((f) => _selectedFriendUids.contains(f.uid))
+        .where((f) => _selectedFriendUids.contains(f.id))
         .toList();
 
     switch (_splitType) {
@@ -418,7 +528,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         return SplitCalculator.calculateEqualSplit(
           totalAmount: totalAmount,
           friends: selected
-              .map((f) => (name: f.name, uid: f.uid as String?))
+              .map((f) => (name: f.name, uid: f.id as String?))
               .toList(),
         );
 
@@ -426,11 +536,11 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         final shares = <FriendSplitShare>[];
         for (final f in selected) {
           final amt =
-              AmountParser.parseAmount(_customControllers[f.uid]?.text) ?? 0.0;
+              AmountParser.parseAmount(_customControllers[f.id]?.text) ?? 0.0;
           shares.add(
             FriendSplitShare(
               friendName: f.name,
-              friendUid: f.uid,
+              friendUid: f.id,
               amount: amt,
               percentage: (amt / totalAmount) * 100,
             ),
@@ -442,8 +552,8 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         final pcts = <({String name, String? uid, double percentage})>[];
         for (final f in selected) {
           final pct =
-              double.tryParse(_percentageControllers[f.uid]?.text ?? '') ?? 0.0;
-          pcts.add((name: f.name, uid: f.uid, percentage: pct));
+              double.tryParse(_percentageControllers[f.id]?.text ?? '') ?? 0.0;
+          pcts.add((name: f.name, uid: f.id, percentage: pct));
         }
         return SplitCalculator.calculatePercentageSplit(
           totalAmount: totalAmount,
@@ -458,23 +568,28 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
       return 'Please enter a valid payment amount.';
     }
 
-    if (_selectedFriendUids.isEmpty) {
+    final nonYouSelected =
+        _selectedFriendUids.where((id) => id != '__you__').toList();
+    if (nonYouSelected.isEmpty) {
       return 'Please select at least one friend to split with.';
     }
 
     if (_splitType == SplitType.custom) {
       final amounts = <double>[];
-      for (final uid in _selectedFriendUids) {
-        final val = AmountParser.parseAmount(_customControllers[uid]?.text);
+      for (final id in _selectedFriendUids) {
+        final val = AmountParser.parseAmount(_customControllers[id]?.text);
         final friend = _allFriends.firstWhere(
-          (f) => f.uid == uid,
+          (f) => f.id == id,
           orElse: () => (
+            id: id,
             name: 'Friend',
-            uid: uid,
+            firebaseUid: null,
             email: null,
             friendCode: null,
             upiId: null,
             mobileNumber: null,
+            isYou: id == '__you__',
+            isLocal: false,
           ),
         );
         if (val == null || val < 0) {
@@ -490,17 +605,20 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
 
     if (_splitType == SplitType.percentage) {
       double sumPct = 0;
-      for (final uid in _selectedFriendUids) {
-        final val = double.tryParse(_percentageControllers[uid]?.text ?? '');
+      for (final id in _selectedFriendUids) {
+        final val = double.tryParse(_percentageControllers[id]?.text ?? '');
         final friend = _allFriends.firstWhere(
-          (f) => f.uid == uid,
+          (f) => f.id == id,
           orElse: () => (
+            id: id,
             name: 'Friend',
-            uid: uid,
+            firebaseUid: null,
             email: null,
             friendCode: null,
             upiId: null,
             mobileNumber: null,
+            isYou: id == '__you__',
+            isLocal: false,
           ),
         );
         if (val == null || val < 0) {
@@ -594,22 +712,43 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     int savedCount = 0;
     try {
       for (final share in shares) {
+        // "You" split share - persist into you_split_shares, NEVER create a self Give/Take transaction!
+        if (share.friendUid == '__you__') {
+          final now = DateTime.now();
+          final youSplitId =
+              'you_split_${now.microsecondsSinceEpoch}_${Random.secure().nextInt(0x7fffffff).toRadixString(16)}';
+          await DatabaseHelper.instance.insertYouSplitShare(
+            id: youSplitId,
+            userId: currentUid ?? '',
+            amount: share.amount,
+            note: note.isNotEmpty ? note : 'Bill Split',
+            date: date.isNotEmpty ? date : _formatDate(now),
+            createdAt: now.toIso8601String(),
+          );
+          continue;
+        }
+
         final friend = _allFriends.firstWhere(
-          (f) => f.uid == share.friendUid,
+          (f) => f.id == share.friendUid,
           orElse: () => (
+            id: share.friendUid ?? '',
             name: share.friendName,
-            uid: share.friendUid ?? '',
+            firebaseUid: null,
             email: null,
             friendCode: null,
             upiId: null,
             mobileNumber: null,
+            isYou: false,
+            isLocal: false,
           ),
         );
-        final peerUserId = friend.uid.isNotEmpty ? friend.uid : null;
 
-        // Auto-generate firebaseId for cloud sync
+        // peerUserId is non-null ONLY for genuine connected Firebase friends with a real UID
+        final peerUserId = friend.firebaseUid;
+
+        // Auto-generate firebaseId for cloud sync only if authenticated and connected
         String? firebaseId;
-        if (currentUid != null) {
+        if (currentUid != null && peerUserId != null) {
           firebaseId = FirebaseFirestore.instance
               .collection('users')
               .doc(currentUid)
@@ -636,7 +775,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
         final localTx = tx.copyWith(
           firebaseId: firebaseId,
           createdBy: currentUid,
-          syncStatus: currentUid != null
+          syncStatus: (currentUid != null && peerUserId != null)
               ? SyncStatus.pending
               : SyncStatus.synced,
         );
@@ -644,8 +783,8 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
           localTx,
         );
 
-        // Save mirrored in Firestore if authenticated
-        if (currentUid != null) {
+        // Save mirrored in Firestore ONLY if authenticated and connected friend
+        if (currentUid != null && peerUserId != null) {
           try {
             await FirebaseDataService.saveTransaction(
               localTx.copyWith(id: localId),
@@ -1300,10 +1439,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                       builder: (context) {
                         final c = _matchedCandidates.first;
                         final isSelected = _selectedFriendUids.contains(
-                          c.friend.uid,
+                          c.friend.id,
                         );
                         return InkWell(
-                          onTap: () => _toggleFriendSelection(c.friend.uid),
+                          onTap: () => _toggleFriendSelection(c.friend.id),
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -1368,10 +1507,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                       runSpacing: 6,
                       children: _matchedCandidates.map((c) {
                         final isSelected = _selectedFriendUids.contains(
-                          c.friend.uid,
+                          c.friend.id,
                         );
                         return InkWell(
-                          onTap: () => _toggleFriendSelection(c.friend.uid),
+                          onTap: () => _toggleFriendSelection(c.friend.id),
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -1530,10 +1669,10 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                     Divider(height: 1, color: cardBorder),
                 itemBuilder: (context, index) {
                   final f = _filteredFriends[index];
-                  final isSelected = _selectedFriendUids.contains(f.uid);
+                  final isSelected = _selectedFriendUids.contains(f.id);
 
                   return InkWell(
-                    onTap: () => _toggleFriendSelection(f.uid),
+                    onTap: () => _toggleFriendSelection(f.id),
                     borderRadius: BorderRadius.circular(16),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -1544,35 +1683,95 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                         children: [
                           CircleAvatar(
                             radius: 16,
-                            backgroundColor: isDark
-                                ? AppColors.surfaceVariantDark
-                                : AppColors.surfaceVariant,
-                            child: Text(
-                              f.name.isNotEmpty ? f.name[0].toUpperCase() : '?',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: textPrimary,
-                              ),
-                            ),
+                            backgroundColor: f.isYou
+                                ? (isDark
+                                    ? const Color(0xFF1E3A8A)
+                                    : const Color(0xFFDBEAFE))
+                                : (isDark
+                                    ? AppColors.surfaceVariantDark
+                                    : AppColors.surfaceVariant),
+                            child: f.isYou
+                                ? Icon(
+                                    Icons.person_rounded,
+                                    size: 18,
+                                    color: isDark
+                                        ? const Color(0xFF93C5FD)
+                                        : const Color(0xFF1D4ED8),
+                                  )
+                                : Text(
+                                    f.name.isNotEmpty
+                                        ? f.name[0].toUpperCase()
+                                        : '?',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: textPrimary,
+                                    ),
+                                  ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  f.name,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: textPrimary,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      f.name,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: textPrimary,
+                                      ),
+                                    ),
+                                    if (f.isYou) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF1E3A8A)
+                                              : const Color(0xFFDBEAFE),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          "Payer",
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark
+                                                ? const Color(0xFF93C5FD)
+                                                : const Color(0xFF1D4ED8),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                                if (f.friendCode != null &&
+                                if (f.isYou)
+                                  Text(
+                                    "Your share (no transaction created)",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: textSecondary,
+                                    ),
+                                  )
+                                else if (f.friendCode != null &&
                                     f.friendCode!.isNotEmpty)
                                   Text(
                                     f.friendCode!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: textSecondary,
+                                    ),
+                                  )
+                                else if (f.isLocal)
+                                  Text(
+                                    "Local friend",
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: textSecondary,
@@ -1583,7 +1782,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                           ),
                           Checkbox(
                             value: isSelected,
-                            onChanged: (_) => _toggleFriendSelection(f.uid),
+                            onChanged: (_) => _toggleFriendSelection(f.id),
                             activeColor: isDark
                                 ? Colors.white
                                 : const Color(0xFF111827),
@@ -1716,7 +1915,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
     final totalAmount = double.tryParse(_amountController.text) ?? 0.0;
     final shares = _computeCurrentShares();
     final selectedFriends = _allFriends
-        .where((f) => _selectedFriendUids.contains(f.uid))
+        .where((f) => _selectedFriendUids.contains(f.id))
         .toList();
 
     return Container(
@@ -1734,20 +1933,37 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      friend.name,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: textPrimary,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          friend.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
+                        if (friend.isYou)
+                          Text(
+                            "You paid this • No debt created",
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: textSecondary,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   if (_splitType == SplitType.equal) ...[
                     Text(
                       "₹${shares.firstWhere(
-                        (s) => s.friendUid == friend.uid,
-                        orElse: () => FriendSplitShare(friendName: friend.name, friendUid: friend.uid, amount: 0),
+                        (s) => s.friendUid == friend.id,
+                        orElse: () => FriendSplitShare(
+                          friendName: friend.name,
+                          friendUid: friend.id,
+                          amount: 0,
+                        ),
                       ).amount.toStringAsFixed(2)}",
                       style: TextStyle(
                         fontSize: 13,
@@ -1760,7 +1976,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                       width: 90,
                       height: 36,
                       child: TextFormField(
-                        controller: _customControllers[friend.uid],
+                        controller: _customControllers[friend.id],
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -1784,7 +2000,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                       width: 70,
                       height: 36,
                       child: TextFormField(
-                        controller: _percentageControllers[friend.uid],
+                        controller: _percentageControllers[friend.id],
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -1919,7 +2135,7 @@ class _SharePaymentScreenState extends State<SharePaymentScreen> {
                 const SizedBox(height: 4),
                 Text(
                   _allFriends
-                      .where((f) => _selectedFriendUids.contains(f.uid))
+                      .where((f) => _selectedFriendUids.contains(f.id))
                       .map((f) => f.name)
                       .join(", "),
                   style: TextStyle(

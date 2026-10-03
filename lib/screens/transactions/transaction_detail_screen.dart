@@ -224,11 +224,20 @@ class TransactionDetailPage extends StatelessWidget {
                 );
                 if (confirmed == true && context.mounted) {
                   if (transaction.firebaseId != null) {
-                    await FirebaseDataService.deleteTransaction(transaction);
+                    DatabaseHelper.deletedFirebaseIds.add(transaction.firebaseId!);
+                    try {
+                      await FirebaseDataService.deleteTransaction(transaction);
+                    } catch (e) {
+                      debugPrint('Error deleting transaction from cloud: $e');
+                    }
                   }
                   if (transaction.id != null) {
                     await DatabaseHelper.instance.deleteTransaction(
                       transaction.id!,
+                    );
+                  } else if (transaction.firebaseId != null) {
+                    await DatabaseHelper.instance.deleteTransactionByFirebaseId(
+                      transaction.firebaseId!,
                     );
                   }
                   if (context.mounted) {
