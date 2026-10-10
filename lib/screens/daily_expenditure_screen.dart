@@ -64,29 +64,30 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
   void _loadExpenses() {
     setState(() => isLoading = true);
     _expensesSubscription?.cancel();
-    _expensesSubscription = ExpenseService.expensesStream(currentUserId!).listen(
-      (data) {
-        if (mounted) {
-          setState(() {
-            expenses = data;
-            isLoading = false;
-          });
-        }
-      },
-      onError: (err) {
-        debugPrint('[DailyExpenditure] Error loading expenses: $err');
-        if (mounted) {
-          setState(() => isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Unable to load expenses. Please check your connection.',
-              ),
-            ),
-          );
-        }
-      },
-    );
+    _expensesSubscription = ExpenseService.expensesStream(currentUserId!)
+        .listen(
+          (data) {
+            if (mounted) {
+              setState(() {
+                expenses = data;
+                isLoading = false;
+              });
+            }
+          },
+          onError: (err) {
+            debugPrint('[DailyExpenditure] Error loading expenses: $err');
+            if (mounted) {
+              setState(() => isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Unable to load expenses. Please check your connection.',
+                  ),
+                ),
+              );
+            }
+          },
+        );
   }
 
   double get todaySpending {
@@ -222,14 +223,16 @@ class _DailyExpenditureScreenState extends State<DailyExpenditureScreen> {
   }
 
   void _showAddEditExpenseSheet({ExpenseModel? expense}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+      clipBehavior: Clip.antiAlias,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => _ExpenseFormSheet(
+      builder: (sheetContext) => _ExpenseFormSheet(
         expense: expense,
         userId: currentUserId!,
         onSaved: () {
@@ -814,178 +817,275 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 20,
-        right: 20,
-        top: 20,
-      ),
-      child: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.borderLight,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                widget.expense == null ? 'Add Expense' : 'Edit Expense',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _amountController,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Amount',
-                  prefixText: '₹ ',
-                  prefixIcon: Icon(Icons.currency_rupee_rounded),
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'Please enter amount';
-                  }
-                  final parsed =
-                      AmountParser.parseAmount(val.trim()) ??
-                      double.tryParse(val.trim());
-                  if (parsed == null || parsed.isNaN || parsed.isInfinite) {
-                    return 'Please enter a valid number';
-                  }
-                  if (parsed <= 0) {
-                    return 'Amount must be greater than 0';
-                  }
-                  if (parsed > 100000000) {
-                    return 'Amount is too large';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedCategory,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-                dropdownColor: Colors.white,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  prefixIcon: Icon(Icons.category_rounded),
-                ),
-                items: _categories
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (val) {
-                  if (val != null) setState(() => _selectedCategory = val);
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _descController,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
-                  prefixIcon: Icon(Icons.description_outlined),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Receipt pickers
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                      label: const Text('Camera'),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+    final subtextColor = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondary;
+    final fieldBg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariant;
+    final borderColor = isDark ? AppColors.borderDark : AppColors.borderLight;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: borderColor,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library_outlined, size: 18),
-                      label: const Text('Gallery'),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  widget.expense == null ? 'Add Expense' : 'Edit Expense',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _amountController,
+                  keyboardType: TextInputType.number,
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Amount',
+                    labelStyle: TextStyle(
+                      color: subtextColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixText: '₹ ',
+                    prefixStyle: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.currency_rupee_rounded,
+                      color: subtextColor,
                     ),
                   ),
-                ],
-              ),
-              if (_receiptImage != null) ...[
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'Please enter amount';
+                    }
+                    final parsed =
+                        AmountParser.parseAmount(val.trim()) ??
+                        double.tryParse(val.trim());
+                    if (parsed == null || parsed.isNaN || parsed.isInfinite) {
+                      return 'Please enter a valid number';
+                    }
+                    if (parsed <= 0) {
+                      return 'Amount must be greater than 0';
+                    }
+                    if (parsed > 100000000) {
+                      return 'Amount is too large';
+                    }
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 12),
-                Stack(
-                  alignment: Alignment.topRight,
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedCategory,
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  dropdownColor: isDark ? AppColors.surfaceDark : Colors.white,
+                  icon: Icon(Icons.arrow_drop_down, color: subtextColor),
+                  decoration: InputDecoration(
+                    labelText: 'Category',
+                    labelStyle: TextStyle(
+                      color: subtextColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.category_rounded,
+                      color: subtextColor,
+                    ),
+                  ),
+                  items: _categories
+                      .map(
+                        (c) => DropdownMenuItem(
+                          value: c,
+                          child: Text(c, style: TextStyle(color: textColor)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) setState(() => _selectedCategory = val);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _descController,
+                  style: TextStyle(color: textColor),
+                  decoration: InputDecoration(
+                    labelText: 'Description (optional)',
+                    labelStyle: TextStyle(
+                      color: subtextColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.description_outlined,
+                      color: subtextColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Receipt pickers
+                Row(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.file(
-                        File(_receiptImage!.path),
-                        height: 100,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.camera),
+                        icon: Icon(
+                          Icons.camera_alt_outlined,
+                          size: 18,
+                          color: textColor,
+                        ),
+                        label: Text(
+                          'Camera',
+                          style: TextStyle(
+                            color: textColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: textColor,
+                          backgroundColor: fieldBg,
+                          side: BorderSide(color: borderColor, width: 1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.cancel, color: Colors.red),
-                      onPressed: () => setState(() => _receiptImage = null),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.gallery),
+                        icon: Icon(
+                          Icons.photo_library_outlined,
+                          size: 18,
+                          color: textColor,
+                        ),
+                        label: Text(
+                          'Gallery',
+                          style: TextStyle(
+                            color: textColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: textColor,
+                          backgroundColor: fieldBg,
+                          side: BorderSide(color: borderColor, width: 1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ] else if (_existingReceiptUrl != null &&
-                  _existingReceiptUrl!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CustomCachedImage(
-                    url: _existingReceiptUrl!,
-                    height: 100,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
+                if (_receiptImage != null) ...[
+                  const SizedBox(height: 12),
+                  Stack(
+                    alignment: Alignment.topRight,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          File(_receiptImage!.path),
+                          height: 100,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.cancel, color: Colors.red),
+                        onPressed: () => setState(() => _receiptImage = null),
+                      ),
+                    ],
+                  ),
+                ] else if (_existingReceiptUrl != null &&
+                    _existingReceiptUrl!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CustomCachedImage(
+                      url: _existingReceiptUrl!,
+                      height: 100,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDark
+                          ? const Color(0xFF2E333D)
+                          : AppColors.darkCard,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            widget.expense == null
+                                ? 'Save Expense'
+                                : 'Update Expense',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 ),
+                const SizedBox(height: 20),
               ],
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _save,
-                  child: _isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Text(
-                          widget.expense == null
-                              ? 'Save Expense'
-                              : 'Update Expense',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
+            ),
           ),
         ),
       ),
