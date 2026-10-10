@@ -27,6 +27,8 @@ class SyncResult {
   final int syncedExpenses;
   final int failedTransactions;
   final int failedExpenses;
+  final int syncedDeletions;
+  final int failedDeletions;
   final String? message;
 
   const SyncResult({
@@ -35,6 +37,8 @@ class SyncResult {
     this.syncedExpenses = 0,
     this.failedTransactions = 0,
     this.failedExpenses = 0,
+    this.syncedDeletions = 0,
+    this.failedDeletions = 0,
     this.message,
   });
 }
@@ -78,11 +82,17 @@ class SyncService with WidgetsBindingObserver {
         debugPrint(
           '[SyncService] User authenticated. Triggering pending sync.',
         );
+        DatabaseHelper.instance.restoreDeletedFirebaseIds(userId: user.uid);
         syncPending();
       } else {
         reset();
       }
     });
+
+    final current = _currentUser;
+    if (current != null) {
+      DatabaseHelper.instance.restoreDeletedFirebaseIds(userId: current.uid);
+    }
 
     // Initial check
     syncPending();
@@ -181,7 +191,10 @@ class SyncService with WidgetsBindingObserver {
       final pendingExp = await DatabaseHelper.instance.getPendingExpenses(
         userId: user.uid,
       );
-      final total = pendingTx.length + pendingExp.length;
+      final pendingDel = await DatabaseHelper.instance.getPendingDeletions(
+        userId: user.uid,
+      );
+      final total = pendingTx.length + pendingExp.length + pendingDel.length;
       pendingCountNotifier.value = total;
       return total;
     } catch (e) {
@@ -215,6 +228,8 @@ class SyncService with WidgetsBindingObserver {
     int failedTx = 0;
     int syncedExp = 0;
     int failedExp = 0;
+    int syncedDel = 0;
+    int failedDel = 0;
     bool networkFailure = false;
 
     try {
@@ -366,23 +381,81 @@ class SyncService with WidgetsBindingObserver {
         }
       }
 
+      // 3. Synchronize Pending Cloud Deletions
+      final pendingDeletions = await DatabaseHelper.instance
+          .getPendingDeletions(userId: currentUid);
+
+      for (final del in pendingDeletions) {
+        if (del.id == null) continue;
+        try {
+          if (del.type == 'friend') {
+            final hasConflict = del.friendUid == null
+                ? await DatabaseHelper.instance.hasConnectedFriendWithName(
+                    del.friendName,
+                  )
+                : false;
+            await FirebaseDataService.deleteFriendData(
+              friendName: del.friendName,
+              friendUid: del.friendUid,
+              specificFirebaseIds: del.firebaseIds.isNotEmpty
+                  ? del.firebaseIds
+                  : null,
+              hasConflictingConnectedFriend: hasConflict,
+            );
+          } else if (del.type == 'transaction') {
+            for (final fid in del.firebaseIds) {
+              await FirebaseDataService.deleteMirroredTransaction(
+                firebaseId: fid,
+                peerUserId: del.friendUid,
+              );
+            }
+          }
+          await DatabaseHelper.instance.deletePendingDeletion(del.id!);
+          syncedDel++;
+        } on FirebaseException catch (fe) {
+          if (fe.code == 'unavailable' || fe.code == 'network-request-failed') {
+            networkFailure = true;
+            debugPrint(
+              '[SyncService] Network unavailable for pending deletion ${del.id}. Kept pending.',
+            );
+          } else {
+            debugPrint(
+              '[SyncService] Firestore error syncing deletion ${del.id}: ${fe.code}',
+            );
+            failedDel++;
+          }
+        } catch (e) {
+          networkFailure = true;
+          debugPrint(
+            '[SyncService] General error syncing pending deletion ${del.id}: $e',
+          );
+        }
+      }
+
       await refreshPendingCount();
 
-      if (networkFailure && syncedTx == 0 && syncedExp == 0) {
+      if (networkFailure && syncedTx == 0 && syncedExp == 0 && syncedDel == 0) {
         return SyncResult(
           status: SyncResultStatus.networkUnavailable,
           syncedTransactions: syncedTx,
           syncedExpenses: syncedExp,
           failedTransactions: failedTx,
           failedExpenses: failedExp,
+          syncedDeletions: syncedDel,
+          failedDeletions: failedDel,
         );
-      } else if (failedTx > 0 || failedExp > 0 || networkFailure) {
+      } else if (failedTx > 0 ||
+          failedExp > 0 ||
+          failedDel > 0 ||
+          networkFailure) {
         return SyncResult(
           status: SyncResultStatus.partial,
           syncedTransactions: syncedTx,
           syncedExpenses: syncedExp,
           failedTransactions: failedTx,
           failedExpenses: failedExp,
+          syncedDeletions: syncedDel,
+          failedDeletions: failedDel,
         );
       }
 
@@ -390,6 +463,7 @@ class SyncService with WidgetsBindingObserver {
         status: SyncResultStatus.success,
         syncedTransactions: syncedTx,
         syncedExpenses: syncedExp,
+        syncedDeletions: syncedDel,
       );
     } finally {
       _isSyncing = false;

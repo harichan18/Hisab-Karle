@@ -72,7 +72,9 @@ class FirebaseDataService {
     }
 
     try {
-      final friendsCollection = FirebaseFirestore.instance.collection('friends');
+      final friendsCollection = FirebaseFirestore.instance.collection(
+        'friends',
+      );
       final user1Docs = await friendsCollection
           .where('user1', isEqualTo: uid)
           .get()
@@ -104,7 +106,9 @@ class FirebaseDataService {
           continue;
         }
 
-        final displayName = (data['name'] as String? ?? '').trim().toLowerCase();
+        final displayName = (data['name'] as String? ?? '')
+            .trim()
+            .toLowerCase();
         if (displayName == normalizedFriendName) {
           return friendUid;
         }
@@ -175,7 +179,8 @@ class FirebaseDataService {
             peerUserId: uid,
           )
           .toFirestoreMap(),
-      'receiptPath': FieldValue.delete(), // Private local path of creator is never mirrored
+      'receiptPath':
+          FieldValue.delete(), // Private local path of creator is never mirrored
       'receiptUrl': transaction.receiptUrl ?? FieldValue.delete(),
       'firebaseId': firebaseId,
       'peerUserId': uid,
@@ -560,6 +565,8 @@ class FirebaseDataService {
   static Future<void> deleteFriendData({
     required String friendName,
     String? friendUid,
+    List<String>? specificFirebaseIds,
+    bool hasConflictingConnectedFriend = false,
   }) async {
     final uid = currentUid;
     final txRef = transactionsRef;
@@ -571,24 +578,74 @@ class FirebaseDataService {
     final normalizedName = friendName.trim().toLowerCase();
     final personId = DatabaseHelper.personIdForName(friendName);
     final batch = FirebaseFirestore.instance.batch();
+    final targetIds =
+        specificFirebaseIds
+            ?.map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet() ??
+        <String>{};
 
-    final transactionDocs = await txRef.get();
-    for (final doc in transactionDocs.docs) {
-      final transactionFriend = (doc.data()['friendName'] as String? ?? '')
-          .trim()
-          .toLowerCase();
-      if (transactionFriend == normalizedName) {
-        batch.delete(doc.reference);
+    final isConflict =
+        hasConflictingConnectedFriend ||
+        (friendUid == null &&
+            await DatabaseHelper.instance.hasConnectedFriendWithName(
+              friendName,
+            ));
+
+    // 1. Prefer exact Firebase transaction document IDs whenever they are known
+    for (final fid in targetIds) {
+      batch.delete(txRef.doc(fid));
+    }
+
+    // 2. Query fallback when specificFirebaseIds is not provided or empty
+    if (targetIds.isEmpty) {
+      // Exclude ambiguous legacy transactions without peerUserId if connected friend with same name exists
+      if (!(friendUid == null && isConflict)) {
+        final transactionDocs = await txRef.get();
+        for (final doc in transactionDocs.docs) {
+          final data = doc.data();
+          final transactionFriend = (data['friendName'] as String? ?? '')
+              .trim()
+              .toLowerCase();
+          if (transactionFriend != normalizedName) continue;
+
+          final docPeer = data['peerUserId'] as String?;
+          if (friendUid != null && friendUid.isNotEmpty) {
+            // Connected friend: match exact peerUserId == friendUid
+            if (docPeer == friendUid) {
+              batch.delete(doc.reference);
+            }
+          } else {
+            // Manual/local friend: match only transactions where peerUserId is null/empty
+            if (docPeer == null || docPeer.isEmpty) {
+              batch.delete(doc.reference);
+            }
+          }
+        }
       }
     }
 
-    final deletedDocs = await deleted
-        .where('personId', isEqualTo: personId)
-        .get();
-    for (final doc in deletedDocs.docs) {
-      batch.delete(doc.reference);
+    // 3. Deleted history cleanup scoped to friend identity
+    if (!(friendUid == null && isConflict)) {
+      final deletedDocs = await deleted
+          .where('personId', isEqualTo: personId)
+          .get();
+      for (final doc in deletedDocs.docs) {
+        final data = doc.data();
+        final docPeer = data['peerUserId'] as String?;
+        if (friendUid != null && friendUid.isNotEmpty) {
+          if (docPeer == friendUid) {
+            batch.delete(doc.reference);
+          }
+        } else {
+          if (docPeer == null || docPeer.isEmpty) {
+            batch.delete(doc.reference);
+          }
+        }
+      }
     }
 
+    // 4. Connected-friend pairing/profile cleanup guarded by friendUid
     if (friendUid != null && friendUid.isNotEmpty) {
       final friendsCollection = FirebaseFirestore.instance.collection(
         'friends',
@@ -624,9 +681,9 @@ class FirebaseDataService {
         return;
       }
 
-      final transactions = await txRef
-          .get()
-          .timeout(const Duration(seconds: 2));
+      final transactions = await txRef.get().timeout(
+        const Duration(seconds: 2),
+      );
       double toGet = 0;
       double toGive = 0;
 

@@ -1,10 +1,12 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/transaction_model.dart';
 import '../models/expense_model.dart';
 import '../models/friend_model.dart';
+import '../models/pending_deletion_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -35,7 +37,7 @@ class DatabaseHelper {
     return await openDatabase(
       path,
 
-      version: 11,
+      version: 12,
 
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -68,6 +70,7 @@ sync_status INTEGER DEFAULT 0
     await _createPersonalExpensesTable(db);
     await _createLocalFriendsTable(db);
     await _createYouSplitSharesTable(db);
+    await _createPendingDeletionsTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -118,6 +121,9 @@ sync_status INTEGER DEFAULT 0
     }
     if (oldVersion < 11) {
       await _createYouSplitSharesTable(db);
+    }
+    if (oldVersion < 12) {
+      await _createPendingDeletionsTable(db);
     }
   }
 
@@ -257,10 +263,19 @@ value TEXT
     );
   }
 
-  Future<int> deleteTransactionsForFriend(
+  Future<List<String>> getTransactionFirebaseIdsForFriend(
     String friendName, {
     String? userId,
+    String? peerUserId,
+    bool isManualFriend = false,
+    bool hasConflictingConnectedFriend = false,
   }) async {
+    // If a manual friend shares the name with a connected friend,
+    // transactions without peerUserId are ambiguous and must NOT be deleted automatically.
+    if (isManualFriend && hasConflictingConnectedFriend) {
+      return [];
+    }
+
     final db = await instance.database;
     final normalizedName = friendName.trim().toLowerCase();
 
@@ -270,6 +285,56 @@ value TEXT
       whereClause =
           '($whereClause) AND (createdBy IS NULL OR createdBy = ? OR peerUserId = ?)';
       whereArgs.addAll([userId, userId]);
+    }
+    if (peerUserId != null && peerUserId.isNotEmpty) {
+      whereClause = '($whereClause) AND peerUserId = ?';
+      whereArgs.add(peerUserId);
+    } else if (isManualFriend) {
+      whereClause =
+          '($whereClause) AND (peerUserId IS NULL OR peerUserId = \'\')';
+    }
+
+    final rows = await db.query(
+      'transactions',
+      columns: ['firebaseId'],
+      where: whereClause,
+      whereArgs: whereArgs,
+    );
+    return rows
+        .map((r) => r['firebaseId'] as String?)
+        .where((id) => id != null && id.isNotEmpty)
+        .cast<String>()
+        .toList();
+  }
+
+  Future<int> deleteTransactionsForFriend(
+    String friendName, {
+    String? userId,
+    String? peerUserId,
+    bool isManualFriend = false,
+    bool hasConflictingConnectedFriend = false,
+  }) async {
+    // Exclude ambiguous legacy transactions from automatic deletion if connected friend with same name exists
+    if (isManualFriend && hasConflictingConnectedFriend) {
+      return 0;
+    }
+
+    final db = await instance.database;
+    final normalizedName = friendName.trim().toLowerCase();
+
+    String whereClause = 'LOWER(TRIM(friendName)) = ?';
+    List<dynamic> whereArgs = [normalizedName];
+    if (userId != null && userId.isNotEmpty) {
+      whereClause =
+          '($whereClause) AND (createdBy IS NULL OR createdBy = ? OR peerUserId = ?)';
+      whereArgs.addAll([userId, userId]);
+    }
+    if (peerUserId != null && peerUserId.isNotEmpty) {
+      whereClause = '($whereClause) AND peerUserId = ?';
+      whereArgs.add(peerUserId);
+    } else if (isManualFriend) {
+      whereClause =
+          '($whereClause) AND (peerUserId IS NULL OR peerUserId = \'\')';
     }
 
     final rows = await db.query(
@@ -391,13 +456,26 @@ value TEXT
     return result.map((json) => DeletedEntryModel.fromMap(json)).toList();
   }
 
-  Future<int> deleteDeletedEntriesForFriend(String friendName) async {
+  Future<int> deleteDeletedEntriesForFriend(
+    String friendName, {
+    String? userId,
+    bool hasConflictingConnectedFriend = false,
+  }) async {
+    if (hasConflictingConnectedFriend) {
+      return 0;
+    }
     final db = await instance.database;
+    String whereClause = 'personId = ?';
+    List<dynamic> whereArgs = [personIdForName(friendName)];
+    if (userId != null && userId.isNotEmpty) {
+      whereClause = '($whereClause) AND (userId IS NULL OR userId = ?)';
+      whereArgs.add(userId);
+    }
 
     return await db.delete(
       'deleted_entries',
-      where: 'personId = ?',
-      whereArgs: [personIdForName(friendName)],
+      where: whereClause,
+      whereArgs: whereArgs,
     );
   }
 
@@ -617,6 +695,11 @@ CREATE TABLE IF NOT EXISTS cached_friends(
       return null;
     }
     return result.first;
+  }
+
+  Future<bool> hasConnectedFriendWithName(String friendName) async {
+    final cached = await getCachedFriendByName(friendName);
+    return cached != null;
   }
 
   Future<List<Map<String, dynamic>>> getAllCachedFriends() async {
@@ -869,17 +952,10 @@ CREATE TABLE IF NOT EXISTS local_friends(
 
   Future<int> deleteLocalFriend(String id) async {
     final db = await instance.database;
-    return await db.delete(
-      'local_friends',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('local_friends', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<int> deleteLocalFriendByName(
-    String name, {
-    String? userId,
-  }) async {
+  Future<int> deleteLocalFriendByName(String name, {String? userId}) async {
     final db = await instance.database;
     final effectiveUserId = userId ?? '';
     final String whereClause;
@@ -984,18 +1060,14 @@ CREATE TABLE IF NOT EXISTS you_split_shares(
     required String createdAt,
   }) async {
     final db = await instance.database;
-    return await db.insert(
-      'you_split_shares',
-      {
-        'id': id,
-        'userId': userId,
-        'amount': amount,
-        'note': note,
-        'date': date,
-        'createdAt': createdAt,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return await db.insert('you_split_shares', {
+      'id': id,
+      'userId': userId,
+      'amount': amount,
+      'note': note,
+      'date': date,
+      'createdAt': createdAt,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Map<String, dynamic>>> getYouSplitShares({String? userId}) async {
@@ -1041,6 +1113,66 @@ CREATE TABLE IF NOT EXISTS you_split_shares(
         where: 'userId = ?',
         whereArgs: [effectiveUserId],
       );
+    }
+  }
+
+  // --- Pending Deletions Queue ---
+
+  Future<void> _createPendingDeletionsTable(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS pending_deletions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId TEXT NOT NULL,
+  type TEXT NOT NULL,
+  friendName TEXT NOT NULL,
+  friendUid TEXT,
+  localFriendId TEXT,
+  firebaseIds TEXT,
+  createdAt TEXT NOT NULL
+)
+''');
+  }
+
+  Future<int> insertPendingDeletion(PendingDeletionModel deletion) async {
+    final db = await instance.database;
+    return await db.insert('pending_deletions', deletion.toMap());
+  }
+
+  Future<List<PendingDeletionModel>> getPendingDeletions({
+    String? userId,
+  }) async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> rows;
+    if (userId != null && userId.isNotEmpty) {
+      rows = await db.query(
+        'pending_deletions',
+        where: 'userId = ? OR userId = \'\'',
+        whereArgs: [userId],
+        orderBy: 'id ASC',
+      );
+    } else {
+      rows = await db.query('pending_deletions', orderBy: 'id ASC');
+    }
+    return rows.map((r) => PendingDeletionModel.fromMap(r)).toList();
+  }
+
+  Future<int> deletePendingDeletion(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'pending_deletions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> restoreDeletedFirebaseIds({String? userId}) async {
+    try {
+      final pending = await getPendingDeletions(userId: userId);
+      for (final p in pending) {
+        deletedFirebaseIds.addAll(p.firebaseIds);
+      }
+    } catch (e) {
+      debugPrint('[DatabaseHelper] Error restoring deletedFirebaseIds: $e');
     }
   }
 }

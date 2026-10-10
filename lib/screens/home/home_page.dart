@@ -21,6 +21,7 @@ import '../../core/utils/transaction_display_helper.dart';
 import '../../database/database_helper.dart';
 import '../../models/expense_model.dart';
 import '../../models/friend_model.dart';
+import '../../models/pending_deletion_model.dart';
 import '../../models/transaction_model.dart';
 import '../../services/expense_service.dart';
 import '../../services/share_receiver_service.dart';
@@ -277,6 +278,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> loadData() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    await DatabaseHelper.instance.restoreDeletedFirebaseIds(userId: uid);
     await loadLocalNicknames();
     await loadLocalFriends();
     await Future.wait([
@@ -618,16 +621,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
       _latestRemoteTransactions = List<TransactionModel>.from(data);
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      final localData = await DatabaseHelper.instance.getTransactions(userId: uid);
-      final activeRemote = _latestRemoteTransactions!
-          .where((t) =>
-              t.firebaseId == null ||
-              !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId))
-          .toList();
-      final merged = mergeTransactions(
-        remote: activeRemote,
-        local: localData,
+      final localData = await DatabaseHelper.instance.getTransactions(
+        userId: uid,
       );
+      final activeRemote = _latestRemoteTransactions!
+          .where(
+            (t) =>
+                t.firebaseId == null ||
+                !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId),
+          )
+          .toList();
+      final merged = mergeTransactions(remote: activeRemote, local: localData);
       bool changed = transactions.length != merged.length;
       if (!changed) {
         for (int i = 0; i < transactions.length; i++) {
@@ -690,14 +694,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     final activeRemote = (_latestRemoteTransactions ?? const [])
-        .where((t) =>
-            t.firebaseId == null ||
-            !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId))
+        .where(
+          (t) =>
+              t.firebaseId == null ||
+              !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId),
+        )
         .toList();
-    final merged = mergeTransactions(
-      remote: activeRemote,
-      local: data,
-    );
+    final merged = mergeTransactions(remote: activeRemote, local: data);
     bool changed = transactions.length != merged.length;
     if (!changed) {
       for (int i = 0; i < transactions.length; i++) {
@@ -1459,12 +1462,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       final key = lf.name.trim().toLowerCase();
       if (key.isEmpty || existingNames.contains(key)) continue;
       final nickname = localNicknames[key];
-      items.add(FriendListItem(
-        name: lf.name,
-        localId: lf.id,
-        isLocal: true,
-        nickname: nickname,
-      ));
+      items.add(
+        FriendListItem(
+          name: lf.name,
+          localId: lf.id,
+          isLocal: true,
+          nickname: nickname,
+        ),
+      );
       existingNames.add(key);
     }
 
@@ -1560,19 +1565,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _friendMatches(
     TransactionModel t,
     String friendName,
-    String? friendUid,
-  ) {
+    String? friendUid, {
+    bool hasConflictingConnectedFriend = false,
+  }) {
     final lowerTarget = friendName.trim().toLowerCase();
-    if (t.friendName.trim().toLowerCase() == lowerTarget) {
-      return true;
+    final nameMatches =
+        t.friendName.trim().toLowerCase() == lowerTarget ||
+        _transactionDisplayFriendName(t).trim().toLowerCase() == lowerTarget;
+
+    if (friendUid != null && friendUid.isNotEmpty) {
+      // Connected friend: match exact peerUserId == friendUid
+      if (t.peerUserId == friendUid) {
+        return true;
+      }
+      // If peerUserId belongs to someone else, do not match even if name matches
+      if (t.peerUserId != null && t.peerUserId!.isNotEmpty) {
+        return false;
+      }
+      // Legacy document without peerUserId represents local/manual history; do not match connected friend
+      return false;
+    } else {
+      // Manual/local friend: peerUserId must be null or empty, and name must match
+      if (t.peerUserId != null && t.peerUserId!.isNotEmpty) {
+        return false;
+      }
+      // If a connected friend with the same normalized name exists,
+      // transactions without peerUserId are ambiguous and must NOT be deleted automatically.
+      if (hasConflictingConnectedFriend) {
+        return false;
+      }
+      return nameMatches;
     }
-    if (_transactionDisplayFriendName(t).trim().toLowerCase() == lowerTarget) {
-      return true;
-    }
-    if (friendUid != null && friendUid.isNotEmpty && t.peerUserId == friendUid) {
-      return true;
-    }
-    return false;
   }
 
   Future<void> deleteEntireFriend(FriendListItem friend) async {
@@ -1607,42 +1630,134 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
+    final isManual = friend.uid == null || friend.uid!.isEmpty;
+    final normalizedName = friend.name.trim().toLowerCase();
 
-    // 1. Unconditionally delete from SQLite
+    // 0. Detect whether a connected friend with the same normalized name exists
+    bool hasConflictingConnectedFriend = false;
+    if (isManual) {
+      final cachedHasConflict = await DatabaseHelper.instance
+          .hasConnectedFriendWithName(friend.name);
+      final inMemoryHasConflict = firestoreFriends.any(
+        (f) =>
+            f.name.trim().toLowerCase() == normalizedName ||
+            f.displayName.trim().toLowerCase() == normalizedName,
+      );
+      hasConflictingConnectedFriend = cachedHasConflict || inMemoryHasConflict;
+    }
+
+    // 1. Collect known Firebase IDs for the selected friend before deletion
+    final knownFirebaseIds = <String>{};
+    for (final t in transactions) {
+      if (_friendMatches(
+            t,
+            friend.name,
+            friend.uid,
+            hasConflictingConnectedFriend: hasConflictingConnectedFriend,
+          ) &&
+          t.firebaseId != null &&
+          t.firebaseId!.isNotEmpty) {
+        knownFirebaseIds.add(t.firebaseId!);
+      }
+    }
+    if (_latestRemoteTransactions != null) {
+      for (final t in _latestRemoteTransactions!) {
+        if (_friendMatches(
+              t,
+              friend.name,
+              friend.uid,
+              hasConflictingConnectedFriend: hasConflictingConnectedFriend,
+            ) &&
+            t.firebaseId != null &&
+            t.firebaseId!.isNotEmpty) {
+          knownFirebaseIds.add(t.firebaseId!);
+        }
+      }
+    }
+    final sqliteIds = await DatabaseHelper.instance
+        .getTransactionFirebaseIdsForFriend(
+          friend.name,
+          userId: uid,
+          peerUserId: friend.uid,
+          isManualFriend: isManual,
+          hasConflictingConnectedFriend: hasConflictingConnectedFriend,
+        );
+    knownFirebaseIds.addAll(sqliteIds);
+
+    // 2. Record deletion intent in SQLite durable pending queue BEFORE removing local data
+    int? pendingId;
+    if (uid != null && uid.isNotEmpty) {
+      final pendingRecord = PendingDeletionModel(
+        userId: uid,
+        type: 'friend',
+        friendName: friend.name,
+        friendUid: friend.uid,
+        localFriendId: friend.localId,
+        firebaseIds: knownFirebaseIds.toList(),
+        createdAt: DateTime.now(),
+      );
+      pendingId = await DatabaseHelper.instance.insertPendingDeletion(
+        pendingRecord,
+      );
+    }
+
+    // Persist to in-memory filter so incoming snapshots cannot recreate friend
+    DatabaseHelper.deletedFirebaseIds.addAll(knownFirebaseIds);
+
+    // 3. Delete from SQLite with identity disambiguation
     if (friend.localId != null && friend.localId!.isNotEmpty) {
       await DatabaseHelper.instance.deleteLocalFriend(friend.localId!);
     }
-    await DatabaseHelper.instance.deleteLocalFriendByName(
-      friend.name,
-      userId: uid,
-    );
-    await DatabaseHelper.instance.deleteLocalFriendByName(friend.name);
+    if (uid != null && uid.isNotEmpty) {
+      await DatabaseHelper.instance.deleteLocalFriendByName(
+        friend.name,
+        userId: uid,
+      );
+    } else {
+      await DatabaseHelper.instance.deleteLocalFriendByName(friend.name);
+    }
     await DatabaseHelper.instance.deleteTransactionsForFriend(
       friend.name,
       userId: uid,
+      peerUserId: friend.uid,
+      isManualFriend: isManual,
+      hasConflictingConnectedFriend: hasConflictingConnectedFriend,
     );
-    await DatabaseHelper.instance.deleteTransactionsForFriend(friend.name);
-    await DatabaseHelper.instance.deleteDeletedEntriesForFriend(friend.name);
+    await DatabaseHelper.instance.deleteDeletedEntriesForFriend(
+      friend.name,
+      userId: uid,
+      hasConflictingConnectedFriend: hasConflictingConnectedFriend,
+    );
     if (friend.uid != null && friend.uid!.isNotEmpty) {
       await DatabaseHelper.instance.deleteCachedFriend(friend.uid!);
+      await DatabaseHelper.instance.deleteCachedFriendByName(friend.name);
     }
-    await DatabaseHelper.instance.deleteCachedFriendByName(friend.name);
-    await DatabaseHelper.instance.deleteFriendNickname(friend.name);
+    if (!hasConflictingConnectedFriend) {
+      await DatabaseHelper.instance.deleteFriendNickname(friend.name);
+    }
 
-    // 2. Attempt cloud deletion only for actual connected Firebase data
-    if (FirebaseAuth.instance.currentUser != null &&
-        (friend.fromFirestore || (friend.uid != null && friend.uid!.isNotEmpty))) {
+    // 4. Attempt cloud deletion for any authenticated user
+    if (FirebaseAuth.instance.currentUser != null) {
       try {
         await FirebaseDataService.deleteFriendData(
           friendName: friend.name,
           friendUid: friend.uid,
+          specificFirebaseIds: knownFirebaseIds.isNotEmpty
+              ? knownFirebaseIds.toList()
+              : null,
+          hasConflictingConnectedFriend: hasConflictingConnectedFriend,
         );
+        if (pendingId != null) {
+          await DatabaseHelper.instance.deletePendingDeletion(pendingId);
+        }
       } catch (e) {
-        debugPrint('[Home] Error deleting friend data in cloud: $e');
+        debugPrint(
+          '[Home] Error deleting friend data in cloud (pending queue retained): $e',
+        );
       }
     }
 
-    // 3. Immediately prune in-memory state
+    // 5. Immediately prune in-memory state
     if (mounted) {
       setState(() {
         _localFriends.removeWhere(
@@ -1651,22 +1766,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               lf.name.trim().toLowerCase() == friend.name.trim().toLowerCase(),
         );
         transactions.removeWhere(
-          (t) => _friendMatches(t, friend.name, friend.uid),
+          (t) => _friendMatches(
+            t,
+            friend.name,
+            friend.uid,
+            hasConflictingConnectedFriend: hasConflictingConnectedFriend,
+          ),
         );
         _latestRemoteTransactions?.removeWhere(
-          (t) => _friendMatches(t, friend.name, friend.uid),
+          (t) => _friendMatches(
+            t,
+            friend.name,
+            friend.uid,
+            hasConflictingConnectedFriend: hasConflictingConnectedFriend,
+          ),
         );
         firestoreFriends.removeWhere(
           (f) =>
               (friend.uid != null &&
                   friend.uid!.isNotEmpty &&
                   f.uid == friend.uid) ||
-              f.name.trim().toLowerCase() == friend.name.trim().toLowerCase(),
+              (isManual &&
+                  !hasConflictingConnectedFriend &&
+                  f.name.trim().toLowerCase() ==
+                      friend.name.trim().toLowerCase()),
         );
         if (friend.uid != null && friend.uid!.isNotEmpty) {
           cachedFriendProfiles.remove(friend.uid);
         }
-        localNicknames.remove(friend.name.trim().toLowerCase());
+        if (!hasConflictingConnectedFriend) {
+          localNicknames.remove(friend.name.trim().toLowerCase());
+        }
       });
     }
 
@@ -2145,9 +2275,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await DatabaseHelper.instance.clearYouSplitShares(userId: uid);
       await loadYouSplitShares();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Split shares cleared.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Split shares cleared.')));
       }
     }
   }
@@ -2300,16 +2430,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         color: isDark ? AppColors.surfaceDark : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark
-              ? const Color(0xFF3F3F46)
-              : const Color(0xFFE4E4E7),
+          color: isDark ? const Color(0xFF3F3F46) : const Color(0xFFE4E4E7),
           width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
-              alpha: isDark ? 0.2 : 0.02,
-            ),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -2321,10 +2447,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _showYouSplitSummarySheet(context, isDark);
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 12,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
               if (photoUrl != null && photoUrl.isNotEmpty)
@@ -2427,8 +2550,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           style: TextStyle(
                             color: amount == 0
                                 ? (isDark
-                                    ? AppColors.textSecondaryDark
-                                    : AppColors.settledText)
+                                      ? AppColors.textSecondaryDark
+                                      : AppColors.settledText)
                                 : const Color(0xFF818CF8),
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
@@ -3242,199 +3365,202 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     )
                   else
                     ...friends.map((friend) {
-                    final friendName = friend.name;
-                    final balance = getFriendBalance(friendName);
-                    final String status;
-                    final Color statusColor;
-                    if (balance > 0) {
-                      status = "Collect";
-                      statusColor = AppColors.collectText;
-                    } else if (balance < 0) {
-                      status = "Pay";
-                      statusColor = AppColors.payText;
-                    } else {
-                      status = "Settled";
-                      statusColor = isDark
-                          ? AppColors.textSecondaryDark
-                          : AppColors.settledText;
-                    }
+                      final friendName = friend.name;
+                      final balance = getFriendBalance(friendName);
+                      final String status;
+                      final Color statusColor;
+                      if (balance > 0) {
+                        status = "Collect";
+                        statusColor = AppColors.collectText;
+                      } else if (balance < 0) {
+                        status = "Pay";
+                        statusColor = AppColors.payText;
+                      } else {
+                        status = "Settled";
+                        statusColor = isDark
+                            ? AppColors.textSecondaryDark
+                            : AppColors.settledText;
+                      }
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      decoration: BoxDecoration(
-                        color: isDark ? AppColors.surfaceDark : Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: isDark
-                              ? AppColors.borderDark
-                              : AppColors.borderLight,
-                          width: 0.8,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(
-                              alpha: isDark ? 0.2 : 0.02,
-                            ),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.surfaceDark : Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: isDark
+                                ? AppColors.borderDark
+                                : AppColors.borderLight,
+                            width: 0.8,
                           ),
-                        ],
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            _smoothRoute(
-                              (_) => PersonDetailPage(
-                                friendName: friendName,
-                                peerUserId: friend.uid,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(
+                                alpha: isDark ? 0.2 : 0.02,
                               ),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
-                          );
-                          _lastDashboardRefreshTime = null;
-                          await refreshDashboard();
-                        },
-                        onLongPress: () {
-                          deleteEntireFriend(friend);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            children: [
-                              (() {
-                                final cached = cachedFriendProfiles[friend.uid];
-                                final photoUrl = cached?['photoUrl'] as String?;
-                                if (photoUrl != null && photoUrl.isNotEmpty) {
+                          ],
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              _smoothRoute(
+                                (_) => PersonDetailPage(
+                                  friendName: friendName,
+                                  peerUserId: friend.uid,
+                                ),
+                              ),
+                            );
+                            _lastDashboardRefreshTime = null;
+                            await refreshDashboard();
+                          },
+                          onLongPress: () {
+                            deleteEntireFriend(friend);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                (() {
+                                  final cached =
+                                      cachedFriendProfiles[friend.uid];
+                                  final photoUrl =
+                                      cached?['photoUrl'] as String?;
+                                  if (photoUrl != null && photoUrl.isNotEmpty) {
+                                    return CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: Colors.transparent,
+                                      child: ClipOval(
+                                        child: CustomCachedImage(
+                                          url: photoUrl,
+                                          width: 40,
+                                          height: 40,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  final Color placeholderColor;
+                                  final Color placeholderBg;
+                                  if (balance > 0) {
+                                    placeholderColor = AppColors.collectText;
+                                    placeholderBg = isDark
+                                        ? const Color(
+                                            0xFF064E3B,
+                                          ).withValues(alpha: 0.3)
+                                        : AppColors.collectBg;
+                                  } else if (balance < 0) {
+                                    placeholderColor = AppColors.payText;
+                                    placeholderBg = isDark
+                                        ? const Color(
+                                            0xFF7F1D1D,
+                                          ).withValues(alpha: 0.3)
+                                        : AppColors.payBg;
+                                  } else {
+                                    placeholderColor = isDark
+                                        ? AppColors.textSecondaryDark
+                                        : AppColors.textSecondary;
+                                    placeholderBg = isDark
+                                        ? AppColors.surfaceVariantDark
+                                        : AppColors.surfaceVariant;
+                                  }
                                   return CircleAvatar(
                                     radius: 20,
-                                    backgroundColor: Colors.transparent,
-                                    child: ClipOval(
-                                      child: CustomCachedImage(
-                                        url: photoUrl,
-                                        width: 40,
-                                        height: 40,
-                                        fit: BoxFit.cover,
+                                    backgroundColor: placeholderBg,
+                                    child: Text(
+                                      friend.displayName.isNotEmpty
+                                          ? friend.displayName[0].toUpperCase()
+                                          : '?',
+                                      style: TextStyle(
+                                        color: placeholderColor,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
                                       ),
                                     ),
                                   );
-                                }
-                                final Color placeholderColor;
-                                final Color placeholderBg;
-                                if (balance > 0) {
-                                  placeholderColor = AppColors.collectText;
-                                  placeholderBg = isDark
-                                      ? const Color(
-                                          0xFF064E3B,
-                                        ).withValues(alpha: 0.3)
-                                      : AppColors.collectBg;
-                                } else if (balance < 0) {
-                                  placeholderColor = AppColors.payText;
-                                  placeholderBg = isDark
-                                      ? const Color(
-                                          0xFF7F1D1D,
-                                        ).withValues(alpha: 0.3)
-                                      : AppColors.payBg;
-                                } else {
-                                  placeholderColor = isDark
-                                      ? AppColors.textSecondaryDark
-                                      : AppColors.textSecondary;
-                                  placeholderBg = isDark
-                                      ? AppColors.surfaceVariantDark
-                                      : AppColors.surfaceVariant;
-                                }
-                                return CircleAvatar(
-                                  radius: 20,
-                                  backgroundColor: placeholderBg,
-                                  child: Text(
-                                    friend.displayName.isNotEmpty
-                                        ? friend.displayName[0].toUpperCase()
-                                        : '?',
-                                    style: TextStyle(
-                                      color: placeholderColor,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                    ),
+                                })(),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        friend.displayName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                          color: isDark
+                                              ? AppColors.textPrimaryDark
+                                              : AppColors.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            "Net: ₹${formatAmount(balance.abs())}",
+                                            style: TextStyle(
+                                              color: isDark
+                                                  ? AppColors.textSecondaryDark
+                                                  : AppColors.textSecondary,
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            "• $status",
+                                            style: TextStyle(
+                                              color: statusColor,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                );
-                              })(),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                ),
+                                const SizedBox(width: 10),
+                                Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      friend.displayName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
-                                        color: isDark
-                                            ? AppColors.textPrimaryDark
-                                            : AppColors.textPrimary,
-                                      ),
+                                    GlassActionButton(
+                                      icon: Icons.add,
+                                      color: AppColors.collectText,
+                                      tooltip: "Give Money (+)",
+                                      onPressed: () {
+                                        quickAddTransaction(friendName, true);
+                                      },
                                     ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          "Net: ₹${formatAmount(balance.abs())}",
-                                          style: TextStyle(
-                                            color: isDark
-                                                ? AppColors.textSecondaryDark
-                                                : AppColors.textSecondary,
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          "• $status",
-                                          style: TextStyle(
-                                            color: statusColor,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
+                                    const SizedBox(width: 8),
+                                    GlassActionButton(
+                                      icon: Icons.remove,
+                                      color: AppColors.payText,
+                                      tooltip: "Take Money (-)",
+                                      onPressed: () {
+                                        quickAddTransaction(friendName, false);
+                                      },
                                     ),
                                   ],
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  GlassActionButton(
-                                    icon: Icons.add,
-                                    color: AppColors.collectText,
-                                    tooltip: "Give Money (+)",
-                                    onPressed: () {
-                                      quickAddTransaction(friendName, true);
-                                    },
-                                  ),
-                                  const SizedBox(width: 8),
-                                  GlassActionButton(
-                                    icon: Icons.remove,
-                                    color: AppColors.payText,
-                                    tooltip: "Take Money (-)",
-                                    onPressed: () {
-                                      quickAddTransaction(friendName, false);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    }),
                 ],
               ],
             ),
