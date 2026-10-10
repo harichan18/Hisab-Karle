@@ -219,18 +219,41 @@ value TEXT
     return result.map((json) => TransactionModel.fromMap(json)).toList();
   }
 
+  Future<TransactionModel?> getTransactionByFirebaseId(
+    String firebaseId,
+  ) async {
+    if (firebaseId.trim().isEmpty) return null;
+    final db = await instance.database;
+    final rows = await db.query(
+      'transactions',
+      where: 'firebaseId = ?',
+      whereArgs: [firebaseId.trim()],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return TransactionModel.fromMap(rows.first);
+  }
+
   Future<int> updateTransaction(TransactionModel transaction) async {
     final db = await instance.database;
 
-    return await db.update(
-      'transactions',
-
-      transaction.toMap(),
-
-      where: 'id = ?',
-
-      whereArgs: [transaction.id],
-    );
+    if (transaction.id != null) {
+      return await db.update(
+        'transactions',
+        transaction.toMap(),
+        where: 'id = ?',
+        whereArgs: [transaction.id],
+      );
+    } else if (transaction.firebaseId != null &&
+        transaction.firebaseId!.trim().isNotEmpty) {
+      return await db.update(
+        'transactions',
+        transaction.toMap(),
+        where: 'firebaseId = ?',
+        whereArgs: [transaction.firebaseId!.trim()],
+      );
+    }
+    return 0;
   }
 
   static final Set<String> deletedFirebaseIds = {};
@@ -745,7 +768,7 @@ CREATE TABLE IF NOT EXISTS cached_friends(
   }
 
   Future<int> updateTransactionSyncStatus(
-    int id,
+    int? id,
     int status, {
     String? firebaseId,
   }) async {
@@ -754,12 +777,22 @@ CREATE TABLE IF NOT EXISTS cached_friends(
       'sync_status': status,
       if (firebaseId != null && firebaseId.isNotEmpty) 'firebaseId': firebaseId,
     };
-    return await db.update(
-      'transactions',
-      values,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    if (id != null) {
+      return await db.update(
+        'transactions',
+        values,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } else if (firebaseId != null && firebaseId.isNotEmpty) {
+      return await db.update(
+        'transactions',
+        values,
+        where: 'firebaseId = ?',
+        whereArgs: [firebaseId],
+      );
+    }
+    return 0;
   }
 
   Future<int> updateTransactionReceipt(

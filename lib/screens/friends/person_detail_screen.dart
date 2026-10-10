@@ -250,16 +250,17 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
         }
         _latestRemoteTransactions = List<TransactionModel>.from(all);
         final uid = FirebaseAuth.instance.currentUser?.uid;
-        final localAll = await DatabaseHelper.instance.getTransactions(userId: uid);
-        final activeRemote = _latestRemoteTransactions!
-            .where((t) =>
-                t.firebaseId == null ||
-                !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId))
-            .toList();
-        final merged = mergeTransactions(
-          remote: activeRemote,
-          local: localAll,
+        final localAll = await DatabaseHelper.instance.getTransactions(
+          userId: uid,
         );
+        final activeRemote = _latestRemoteTransactions!
+            .where(
+              (t) =>
+                  t.firebaseId == null ||
+                  !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId),
+            )
+            .toList();
+        final merged = mergeTransactions(remote: activeRemote, local: localAll);
         final forPerson = merged
             .where(
               (t) =>
@@ -303,14 +304,13 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
       return;
     }
     final activeRemote = (_latestRemoteTransactions ?? const [])
-        .where((t) =>
-            t.firebaseId == null ||
-            !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId))
+        .where(
+          (t) =>
+              t.firebaseId == null ||
+              !DatabaseHelper.deletedFirebaseIds.contains(t.firebaseId),
+        )
         .toList();
-    final merged = mergeTransactions(
-      remote: activeRemote,
-      local: all,
-    );
+    final merged = mergeTransactions(remote: activeRemote, local: all);
     final forPerson = merged
         .where(
           (t) =>
@@ -441,7 +441,9 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
 
   void _showTransactionOptions(BuildContext context, TransactionModel t) {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    final isCreator = t.createdBy == currentUid;
+    final isManual = t.peerUserId == null || t.peerUserId!.isEmpty;
+    final isCreator =
+        isManual || (t.createdBy != null && t.createdBy == currentUid);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark
         ? AppColors.textPrimaryDark
@@ -526,14 +528,18 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     );
                   }
                   setState(() {
-                    personTransactions.removeWhere((item) =>
-                        (t.id != null && item.id == t.id) ||
-                        (t.firebaseId != null &&
-                            item.firebaseId == t.firebaseId));
-                    _latestRemoteTransactions?.removeWhere((item) =>
-                        (t.id != null && item.id == t.id) ||
-                        (t.firebaseId != null &&
-                            item.firebaseId == t.firebaseId));
+                    personTransactions.removeWhere(
+                      (item) =>
+                          (t.id != null && item.id == t.id) ||
+                          (t.firebaseId != null &&
+                              item.firebaseId == t.firebaseId),
+                    );
+                    _latestRemoteTransactions?.removeWhere(
+                      (item) =>
+                          (t.id != null && item.id == t.id) ||
+                          (t.firebaseId != null &&
+                              item.firebaseId == t.firebaseId),
+                    );
                   });
                   await loadPersonTransactions();
                 },
@@ -564,19 +570,22 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     if (t.id != null) {
                       await DatabaseHelper.instance.deleteTransaction(t.id!);
                     } else if (t.firebaseId != null) {
-                      await DatabaseHelper.instance.deleteTransactionByFirebaseId(
-                        t.firebaseId!,
-                      );
+                      await DatabaseHelper.instance
+                          .deleteTransactionByFirebaseId(t.firebaseId!);
                     }
                     setState(() {
-                      personTransactions.removeWhere((item) =>
-                          (t.id != null && item.id == t.id) ||
-                          (t.firebaseId != null &&
-                              item.firebaseId == t.firebaseId));
-                      _latestRemoteTransactions?.removeWhere((item) =>
-                          (t.id != null && item.id == t.id) ||
-                          (t.firebaseId != null &&
-                              item.firebaseId == t.firebaseId));
+                      personTransactions.removeWhere(
+                        (item) =>
+                            (t.id != null && item.id == t.id) ||
+                            (t.firebaseId != null &&
+                                item.firebaseId == t.firebaseId),
+                      );
+                      _latestRemoteTransactions?.removeWhere(
+                        (item) =>
+                            (t.id != null && item.id == t.id) ||
+                            (t.firebaseId != null &&
+                                item.firebaseId == t.firebaseId),
+                      );
                     });
                     await loadPersonTransactions();
                   },
@@ -642,10 +651,12 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     );
                   }
                   setState(() {
-                    deletedTransactions.removeWhere((e) =>
-                        (entry.id != null && e.id == entry.id) ||
-                        (entry.firebaseId != null &&
-                            e.firebaseId == entry.firebaseId));
+                    deletedTransactions.removeWhere(
+                      (e) =>
+                          (entry.id != null && e.id == entry.id) ||
+                          (entry.firebaseId != null &&
+                              e.firebaseId == entry.firebaseId),
+                    );
                   });
                   await loadPersonTransactions();
                 },
@@ -668,7 +679,9 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     try {
                       await FirebaseDataService.permanentlyDeleteEntry(entry);
                     } catch (e) {
-                      debugPrint('Error permanently deleting entry in cloud: $e');
+                      debugPrint(
+                        'Error permanently deleting entry in cloud: $e',
+                      );
                     }
                   }
                   if (entry.id != null) {
@@ -677,10 +690,12 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     );
                   }
                   setState(() {
-                    deletedTransactions.removeWhere((e) =>
-                        (entry.id != null && e.id == entry.id) ||
-                        (entry.firebaseId != null &&
-                            e.firebaseId == entry.firebaseId));
+                    deletedTransactions.removeWhere(
+                      (e) =>
+                          (entry.id != null && e.id == entry.id) ||
+                          (entry.firebaseId != null &&
+                              e.firebaseId == entry.firebaseId),
+                    );
                   });
                   await loadPersonTransactions();
                 },
@@ -852,14 +867,18 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                 );
                 if (result == true && context.mounted) {
                   setState(() {
-                    personTransactions.removeWhere((item) =>
-                        (t.id != null && item.id == t.id) ||
-                        (t.firebaseId != null &&
-                            item.firebaseId == t.firebaseId));
-                    _latestRemoteTransactions?.removeWhere((item) =>
-                        (t.id != null && item.id == t.id) ||
-                        (t.firebaseId != null &&
-                            item.firebaseId == t.firebaseId));
+                    personTransactions.removeWhere(
+                      (item) =>
+                          (t.id != null && item.id == t.id) ||
+                          (t.firebaseId != null &&
+                              item.firebaseId == t.firebaseId),
+                    );
+                    _latestRemoteTransactions?.removeWhere(
+                      (item) =>
+                          (t.id != null && item.id == t.id) ||
+                          (t.firebaseId != null &&
+                              item.firebaseId == t.firebaseId),
+                    );
                   });
                   await loadPersonTransactions();
                 }

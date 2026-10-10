@@ -266,7 +266,7 @@ class SyncService with WidgetsBindingObserver {
           await FirebaseDataService.saveTransaction(
             tx.copyWith(
               firebaseId: resolvedFirebaseId,
-              createdBy: currentUid,
+              createdBy: tx.createdBy ?? currentUid,
               receiptUrl: currentReceiptUrl,
             ),
             firebaseId: resolvedFirebaseId,

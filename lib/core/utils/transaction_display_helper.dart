@@ -91,11 +91,23 @@ List<TransactionModel> mergeTransactions({
     final fid = localTx.firebaseId?.trim();
     if (fid != null && fid.isNotEmpty) {
       if (byFirebaseId.containsKey(fid)) {
-        // If already present remotely, preserve local receiptPath if remote lacks it
         final existing = byFirebaseId[fid]!;
-        if (existing.receiptPath == null && localTx.receiptPath != null) {
+        final effectiveId = localTx.id ?? existing.id;
+        final effectiveReceiptPath =
+            localTx.receiptPath ?? existing.receiptPath;
+
+        if (localTx.syncStatus != SyncStatus.synced) {
+          // Local record has pending/syncing edits: prefer local values over stale remote snapshot
+          byFirebaseId[fid] = localTx.copyWith(
+            id: effectiveId,
+            receiptPath: effectiveReceiptPath,
+            receiptUrl: localTx.receiptUrl ?? existing.receiptUrl,
+          );
+        } else {
+          // Local record is already synced: prefer remote snapshot while preserving local SQLite id & receiptPath
           byFirebaseId[fid] = existing.copyWith(
-            receiptPath: localTx.receiptPath,
+            id: effectiveId,
+            receiptPath: effectiveReceiptPath,
           );
         }
       } else {
@@ -104,8 +116,10 @@ List<TransactionModel> mergeTransactions({
       }
     } else {
       // Unkeyed transaction: deduplicate by SQLite local id if present
-      final alreadyPresent = unkeyed.any((item) =>
-          item.id != null && localTx.id != null && item.id == localTx.id);
+      final alreadyPresent = unkeyed.any(
+        (item) =>
+            item.id != null && localTx.id != null && item.id == localTx.id,
+      );
       if (!alreadyPresent) {
         unkeyed.add(localTx);
       }
@@ -125,4 +139,3 @@ List<TransactionModel> mergeTransactions({
 
   return merged;
 }
-

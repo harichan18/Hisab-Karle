@@ -154,7 +154,11 @@ class TransactionDetailPage extends StatelessWidget {
     final statusText = isGiven ? 'Collect' : 'Pay';
     final displayFriendName = transactionDisplayFriendName(transaction);
     final currentUser = FirebaseAuth.instance.currentUser?.uid;
-    final isCreator = transaction.createdBy == currentUser;
+    final isManual =
+        transaction.peerUserId == null || transaction.peerUserId!.isEmpty;
+    final isCreator =
+        isManual ||
+        (transaction.createdBy != null && transaction.createdBy == currentUser);
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.backgroundDark : AppColors.background,
@@ -224,7 +228,9 @@ class TransactionDetailPage extends StatelessWidget {
                 );
                 if (confirmed == true && context.mounted) {
                   if (transaction.firebaseId != null) {
-                    DatabaseHelper.deletedFirebaseIds.add(transaction.firebaseId!);
+                    DatabaseHelper.deletedFirebaseIds.add(
+                      transaction.firebaseId!,
+                    );
                     try {
                       await FirebaseDataService.deleteTransaction(transaction);
                     } catch (e) {

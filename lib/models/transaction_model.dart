@@ -36,7 +36,7 @@ class TransactionModel {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      if (id != null) 'id': id,
       if (firebaseId != null) 'firebaseId': firebaseId,
       if (peerUserId != null) 'peerUserId': peerUserId,
       if (createdBy != null) 'createdBy': createdBy,

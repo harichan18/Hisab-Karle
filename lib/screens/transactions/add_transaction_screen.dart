@@ -268,32 +268,95 @@ class _AddPageState extends State<AddPage> {
           }
         }
       } else {
-        if (transaction.id != null) {
-          receiptLog(scope, 'Updating transaction in local DB.');
-          final updatedTx = transaction.copyWith(
-            syncStatus: currentUser != null
-                ? SyncStatus.pending
-                : SyncStatus.synced,
-          );
-          await DatabaseHelper.instance.updateTransaction(updatedTx);
-
-          if (currentUser != null) {
-            receiptLog(scope, 'Writing updated transaction to Firestore.');
-            try {
-              await FirebaseDataService.saveTransaction(
-                updatedTx,
-                firebaseId: transaction.firebaseId,
-              ).timeout(const Duration(seconds: 2));
-              await DatabaseHelper.instance.updateTransactionSyncStatus(
-                transaction.id!,
-                SyncStatus.synced,
-              );
-            } catch (cloudErr) {
-              receiptLog(
-                scope,
-                'Cloud update queued/failed: $cloudErr; safely stored in local SQLite.',
+        // 1. Enforce creator-only permissions for connected transactions
+        final isConnected =
+            widget.transaction!.peerUserId != null &&
+            widget.transaction!.peerUserId!.isNotEmpty;
+        if (isConnected) {
+          if (currentUser == null ||
+              widget.transaction!.createdBy == null ||
+              widget.transaction!.createdBy != currentUser.uid) {
+            receiptLog(
+              scope,
+              'Edit rejected: User ${currentUser?.uid} is not authorized creator (${widget.transaction!.createdBy}).',
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Only the creator can edit this transaction.'),
+                ),
               );
             }
+            return;
+          }
+        }
+
+        // 2. Resolve existing local SQLite ID and preserve original Firebase document ID
+        int? localId = widget.transaction!.id;
+        final targetFirebaseId = widget.transaction!.firebaseId;
+
+        if (localId == null &&
+            targetFirebaseId != null &&
+            targetFirebaseId.isNotEmpty) {
+          final existing = await DatabaseHelper.instance
+              .getTransactionByFirebaseId(targetFirebaseId);
+          if (existing != null) {
+            localId = existing.id;
+          }
+        }
+
+        // 3. Build updated transaction payload preserving ownership and identifiers
+        final updatedTx = transaction.copyWith(
+          id: localId,
+          firebaseId: targetFirebaseId,
+          peerUserId: widget.transaction!.peerUserId,
+          createdBy: widget.transaction!.createdBy ?? currentUser?.uid,
+          friendName: widget.transaction!.friendName,
+          syncStatus: currentUser != null
+              ? SyncStatus.pending
+              : SyncStatus.synced,
+        );
+
+        // 4. Update existing local row, or insert local cache row if not in SQLite yet
+        if (localId != null) {
+          receiptLog(
+            scope,
+            'Updating existing transaction in local DB (id=$localId).',
+          );
+          final rows = await DatabaseHelper.instance.updateTransaction(
+            updatedTx,
+          );
+          if (rows == 0) {
+            localId = await DatabaseHelper.instance.insertTransaction(
+              updatedTx,
+            );
+          }
+        } else {
+          receiptLog(
+            scope,
+            'Inserting local cache row for Firestore-loaded transaction.',
+          );
+          localId = await DatabaseHelper.instance.insertTransaction(updatedTx);
+        }
+
+        // 5. Update Firestore if authenticated
+        if (currentUser != null) {
+          receiptLog(scope, 'Writing updated transaction to Firestore.');
+          try {
+            await FirebaseDataService.saveTransaction(
+              updatedTx.copyWith(id: localId),
+              firebaseId: targetFirebaseId,
+            ).timeout(const Duration(seconds: 2));
+            await DatabaseHelper.instance.updateTransactionSyncStatus(
+              localId,
+              SyncStatus.synced,
+              firebaseId: targetFirebaseId,
+            );
+          } catch (cloudErr) {
+            receiptLog(
+              scope,
+              'Cloud update queued/failed: $cloudErr; safely stored in local SQLite.',
+            );
           }
         }
       }
@@ -450,6 +513,7 @@ class _AddPageState extends State<AddPage> {
             ],
             TextField(
               controller: friendController,
+              readOnly: widget.transaction != null,
               style: TextStyle(color: textColor, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: "Friend Name",

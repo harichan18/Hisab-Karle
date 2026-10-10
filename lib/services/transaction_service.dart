@@ -160,8 +160,11 @@ class FirebaseDataService {
     final peerTransactionsRef = _transactionsRefForUid(resolvedPeerUid);
     final currentDisplayName = currentUserDisplayName();
 
+    final effectiveCreatedBy = transaction.createdBy ?? uid;
+
     final ownerData = {
       ...transaction.toFirestoreMap(),
+      'createdBy': effectiveCreatedBy,
       'receiptPath': transaction.receiptPath ?? FieldValue.delete(),
       'receiptUrl': transaction.receiptUrl ?? FieldValue.delete(),
       'firebaseId': firebaseId,
@@ -177,8 +180,10 @@ class FirebaseDataService {
                 : transaction.friendName,
             iGave: !transaction.iGave,
             peerUserId: uid,
+            createdBy: effectiveCreatedBy,
           )
           .toFirestoreMap(),
+      'createdBy': effectiveCreatedBy,
       'receiptPath':
           FieldValue.delete(), // Private local path of creator is never mirrored
       'receiptUrl': transaction.receiptUrl ?? FieldValue.delete(),
